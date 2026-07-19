@@ -1,0 +1,27 @@
+From: BE-IIS <info@be-iis.eu>
+Subject: [PATCH] media: i2c: max96717: honor low GPIO output values
+
+The GPIO set callback currently ignores its value argument and always writes
+MAX96717_GPIO_OUT. As a result, a GPIO can be set high but cannot subsequently
+be cleared through gpiolib.
+
+Use the requested value when updating the GPIO output bit.
+
+This is a local BE-IIS fix pending upstream submission and review.
+
+---
+ max96717.c | 3 ++-
+ 1 file changed, 2 insertions(+), 1 deletion(-)
+
+--- max96717.c
++++ max96717.c
+@@ -302,8 +302,9 @@ static void max96717_gpiochip_set(struct gpio_chip *gpiochip,
+ 	struct max96717_priv *priv = gpiochip_get_data(gpiochip);
+ 
+ 	cci_update_bits(priv->regmap, MAX96717_GPIO_REG_A(offset),
+-			MAX96717_GPIO_OUT, MAX96717_GPIO_OUT, NULL);
++			MAX96717_GPIO_OUT,
++			value ? MAX96717_GPIO_OUT : 0, NULL);
+ }
+ 
+ static int max96717_gpio_get_direction(struct gpio_chip *gpiochip,

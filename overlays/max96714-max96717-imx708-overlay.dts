@@ -1,0 +1,186 @@
+// SPDX-License-Identifier: GPL-2.0-only
+// MAX96714F + MAX96717F GMSL2 camera link with Sony IMX708
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835";
+
+	fragment@0 {
+		target = <&i2c0if>;
+		__overlay__ {
+			status = "okay";
+		};
+	};
+
+	fragment@1 {
+		target = <&i2c0mux>;
+		__overlay__ {
+			status = "okay";
+		};
+	};
+
+	i2c_frag: fragment@2 {
+		target = <&i2c_csi_dsi>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			max96714: deserializer@28 {
+				compatible = "maxim,max96714f";
+				reg = <0x28>;
+				status = "okay";
+
+				ports {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					port@0 {
+						reg = <0>;
+
+						max96714_gmsl_in: endpoint {
+							remote-endpoint = <&max96717_gmsl_out>;
+						};
+					};
+
+					port@1 {
+						reg = <1>;
+
+						max96714_csi_out: endpoint {
+							clock-lanes = <0>;
+							data-lanes = <1 2>;
+							link-frequencies = /bits/ 64 <450000000>;
+							clock-noncontinuous;
+							remote-endpoint = <&csi_ep>;
+						};
+					};
+				};
+
+				i2c-gate {
+					#address-cells = <1>;
+					#size-cells = <0>;
+
+					max96717: serializer@40 {
+						compatible = "maxim,max96717f";
+						reg = <0x40>;
+						gpio-controller;
+						#gpio-cells = <2>;
+						#clock-cells = <0>;
+						status = "okay";
+
+						ports {
+							#address-cells = <1>;
+							#size-cells = <0>;
+
+							port@0 {
+								reg = <0>;
+
+								max96717_csi_in: endpoint {
+									clock-lanes = <0>;
+									data-lanes = <1 2>;
+									clock-noncontinuous;
+									remote-endpoint = <&imx708_out>;
+								};
+							};
+
+							port@1 {
+								reg = <1>;
+
+								max96717_gmsl_out: endpoint {
+									remote-endpoint = <&max96714_gmsl_in>;
+								};
+							};
+						};
+
+						i2c-gate {
+							#address-cells = <1>;
+							#size-cells = <0>;
+
+							imx708: camera@1a {
+								compatible = "sony,imx708";
+								reg = <0x1a>;
+								status = "okay";
+
+								clocks = <&max96717>;
+								clock-names = "inclk";
+
+								/* MFP3 enables the regulators on the remote camera board. */
+								vana1-supply = <&remote_cam_reg>;
+								vana2-supply = <&remote_cam_reg>;
+								vdig-supply = <&remote_cam_reg>;
+								vddl-supply = <&remote_cam_reg>;
+
+								/* MAX96717 MFP4 drives the IMX708 XCLR input. */
+								reset-gpios = <&max96717 4 0>;
+								lens-focus = <&dw9817>;
+								rotation = <180>;
+								orientation = <2>;
+
+								port {
+									imx708_out: endpoint {
+										clock-lanes = <0>;
+										data-lanes = <1 2>;
+										link-frequencies = /bits/ 64 <450000000>;
+										clock-noncontinuous;
+										remote-endpoint = <&max96717_csi_in>;
+									};
+								};
+							};
+
+							dw9817: focus@c {
+								compatible = "dongwoon,dw9817-vcm";
+								reg = <0x0c>;
+								VDD-supply = <&remote_cam_reg>;
+								status = "okay";
+							};
+						};
+					};
+				};
+			};
+		};
+	};
+
+	csi_frag: fragment@3 {
+		target = <&csi1>;
+		__overlay__ {
+			status = "okay";
+
+			port {
+				csi_ep: endpoint {
+					clock-lanes = <0>;
+					data-lanes = <1 2>;
+					clock-noncontinuous;
+					remote-endpoint = <&max96714_csi_out>;
+				};
+			};
+		};
+	};
+
+	fragment@4 {
+		target-path = "/";
+		__overlay__ {
+			remote_cam_reg: regulator-camera-remote {
+				compatible = "regulator-fixed";
+				regulator-name = "gmsl-imx708-camera-enable";
+				regulator-min-microvolt = <2700000>;
+				regulator-max-microvolt = <2700000>;
+				gpio = <&max96717 3 0>;
+				enable-active-high;
+				startup-delay-us = <70000>;
+				off-on-delay-us = <30000>;
+			};
+		};
+	};
+
+	__overrides__ {
+		cam0 = <&i2c_frag>, "target:0=", <&i2c_csi_dsi0>,
+		       <&csi_frag>, "target:0=", <&csi0>;
+		rotation = <&imx708>, "rotation:0";
+		orientation = <&imx708>, "orientation:0";
+		cam-enable-mfp = <&remote_cam_reg>, "gpio:4";
+		xclr-mfp = <&imx708>, "reset-gpios:4";
+		vcm = <&dw9817>, "status",
+		      <0>, "=4";
+	};
+};
