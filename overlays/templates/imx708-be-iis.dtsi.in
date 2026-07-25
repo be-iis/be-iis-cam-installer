@@ -1,0 +1,96 @@
+{#
+BE-IIS IMX708 remote-board template.
+
+Differences from ADI's imx708.dtsi.in:
+- MAX96717 is the 24 MHz clock provider.
+- The serializer reference clock is routed to MFP2.
+- MFP3 enables the remote camera supplies.
+- MFP4 drives IMX708 XCLR.
+#}
+{% set power_enable_pin = cam_cfg.reset_pin | d(3) %}
+{% set xclr_pin = cam_cfg.xclr_pin | d(4) %}
+{% set vcm_enabled = cam_cfg.vcm_enabled | d(true) %}
+{% set cam_label = ser_label ~ "_cam_" ~ cam_idx %}
+{% set vcm_label = ser_label ~ "_vcm_" ~ cam_idx %}
+{% set reg_label = ser_label ~ "_reg_" ~ cam_idx %}
+{% set rclk_state_label = ser_label ~ "_rclk_mfp2" %}
+{% set cam_out_label = cam_label ~ "_out" %}
+{% set cam_out_remote_label = ser_in_label_x(cam_idx) %}
+
+&{/} {
+	{{reg_label}}: {{reg_label}} {
+		compatible = "regulator-fixed";
+		regulator-name = "{{reg_label}}";
+		enable-active-high;
+		gpio = <&{{ser_label}} {{power_enable_pin}} 0>;
+		startup-delay-us = <70000>;
+		off-on-delay-us = <30000>;
+	};
+};
+
+&{{ser_label}} {
+	{{rclk_state_label}}: rclk-mfp2-state {
+		function = "rclkout";
+		pins = "mfp2";
+	};
+};
+
+&{{ser_i2c_label()}} {
+	{{cam_label}}: imx708@1a {
+		compatible = "sony,imx708";
+		reg = <0x1a>;
+
+		vana1-supply = <&{{reg_label}}>;
+		vana2-supply = <&{{reg_label}}>;
+		vdig-supply = <&{{reg_label}}>;
+		vddl-supply = <&{{reg_label}}>;
+
+		clocks = <&{{ser_label}}>;
+		clock-names = "inclk";
+
+		pinctrl-names = "default";
+		pinctrl-0 = <&{{rclk_state_label}}>;
+		reset-gpios = <&{{ser_label}} {{xclr_pin}} 0>;
+
+		rotation = <180>;
+		orientation = <2>;
+
+{% if vcm_enabled %}
+		lens-focus = <&{{vcm_label}}>;
+{% endif %}
+
+		port {
+			{{cam_out_label}}: endpoint {
+				clock-lanes = <0>;
+				data-lanes = <1 2>;
+				clock-noncontinuous;
+				link-frequencies = /bits/ 64 <450000000>;
+				remote-endpoint = <&{{cam_out_remote_label}}>;
+			};
+		};
+	};
+
+{% if vcm_enabled %}
+	{{vcm_label}}: dw9817@c {
+		compatible = "dongwoon,dw9817-vcm";
+		reg = <0x0c>;
+		VDD-supply = <&{{reg_label}}>;
+	};
+{% endif %}
+};
+
+&{{ser_label}} {
+	ports {
+		port@{{cam_idx}} {
+			reg = <0>;
+
+			{{cam_out_remote_label}}: endpoint {
+				clock-lanes = <0>;
+				data-lanes = <1 2>;
+				clock-noncontinuous;
+				link-frequencies = /bits/ 64 <450000000>;
+				remote-endpoint = <&{{cam_out_label}}>;
+			};
+		};
+	};
+};

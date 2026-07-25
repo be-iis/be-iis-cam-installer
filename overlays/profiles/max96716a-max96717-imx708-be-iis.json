@@ -1,0 +1,45 @@
+[
+  {
+    "name": "max96716a",
+    "address": "0x28",
+    "i2c_bus": "i2c_csi_dsi1",
+    "platform_cfg": {
+      "name": "rpi-5-b",
+      "csi_idx": 1,
+      "phy_idx": 1
+    },
+    "phys": [
+      {
+        "phy_idx": 1,
+        "num_lanes": 2,
+        "link_frequencies": [
+          450000000
+        ],
+        "clock_lanes": [
+          0
+        ],
+        "data_lanes": [
+          1,
+          2
+        ]
+      }
+    ],
+    "links": [
+      {
+        "name": "max96717",
+        "cameras": [
+          {
+            "name": "imx708-be-iis",
+            "reset_pin": 3,
+            "xclr_pin": 4,
+            "vcm_enabled": false
+          }
+        ],
+        "pool_addrs": [
+          "0x52",
+          "0x53"
+        ]
+      }
+    ]
+  }
+]

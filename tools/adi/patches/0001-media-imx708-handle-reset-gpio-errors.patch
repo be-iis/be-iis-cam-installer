@@ -1,0 +1,32 @@
+From: BE-IIS <support@be-iis.eu>
+Subject: [PATCH] media: imx708: handle reset GPIO acquisition errors
+
+devm_gpiod_get_optional() can return an error pointer.  Stop probing and
+propagate that error instead of passing the error pointer to
+gpiod_set_value_cansleep() during power-on and power-off.
+
+This also preserves -EPROBE_DEFER when the GPIO provider is not ready yet.
+
+Signed-off-by: BE-IIS <support@be-iis.eu>
+---
+ drivers/media/i2c/imx708.c | 6 ++++++
+ 1 file changed, 6 insertions(+)
+
+diff --git a/drivers/media/i2c/imx708.c b/drivers/media/i2c/imx708.c
+--- a/drivers/media/i2c/imx708.c
++++ b/drivers/media/i2c/imx708.c
+@@ -1947,6 +1947,12 @@ static int imx708_probe(struct i2c_client *client)
+ 	/* Request optional enable pin */
+ 	imx708->reset_gpio = devm_gpiod_get_optional(dev, "reset",
+ 						     GPIOD_OUT_HIGH);
++	if (IS_ERR(imx708->reset_gpio)) {
++		ret = PTR_ERR(imx708->reset_gpio);
++		dev_err_probe(dev, ret,
++			      "failed to acquire reset GPIO\n");
++		return ret;
++	}
+ 
+ 	/*
+ 	 * The sensor must be powered for imx708_identify_module()
+-- 
+2.47.2

@@ -1,0 +1,93 @@
+diff --git a/src/libcamera/pipeline/rpi/pisp/pisp.cpp b/src/libcamera/pipeline/rpi/pisp/pisp.cpp
+index b490fc2..964bdd3 100644
+--- a/src/libcamera/pipeline/rpi/pisp/pisp.cpp
++++ b/src/libcamera/pipeline/rpi/pisp/pisp.cpp
+@@ -770,6 +770,7 @@ public:
+ 
+ 	std::unique_ptr<V4L2Subdevice> csi2Subdev_;
+ 	std::unique_ptr<V4L2Subdevice> feSubdev_;
++	bool upstreamCfe_ = false;
+ 
+ 	std::vector<FrameBuffer *> tdnBuffers_;
+ 	std::vector<FrameBuffer *> stitchBuffers_;
+@@ -1081,6 +1082,17 @@ int PipelineHandlerPiSP::platformRegister(std::unique_ptr<RPi::CameraData> &came
+ 	int ret;
+ 
+ 	const bool upstreamCfe = cfe->getEntityByName("rp1-cfe-fe-image0");
++	data->upstreamCfe_ = upstreamCfe;
++	if (upstreamCfe) {
++		/*
++		 * The upstream CFE exposes one source pad per CSI-2 channel
++		 * instead of dedicated image and embedded-data pads. Embedded
++		 * metadata needs stream-aware routing which this pipeline handler
++		 * does not implement yet.
++		 */
++		data->sensorMetadata_ = false;
++	}
++
+ 	MediaEntity *cfeImage = cfe->getEntityByName(upstreamCfe
+ 						     ? "rp1-cfe-fe-image0"
+ 						     : "rp1-cfe-fe_image0");
+@@ -2182,7 +2194,7 @@ int PiSPCameraData::configureEntities(V4L2SubdeviceFormat sensorFormat,
+ 
+ 	constexpr unsigned int csiVideoSinkPad = 0;
+ 	constexpr unsigned int csiMetaSinkPad = 1;
+-	constexpr unsigned int csiVideoSourcePad = 4;
++	const unsigned int csiVideoSourcePad = upstreamCfe_ ? 1 : 4;
+ 	constexpr unsigned int csiMetaSourcePad = 5;
+ 
+ 	constexpr unsigned int feVideoSinkPad = 0;
+@@ -2194,15 +2206,37 @@ int PiSPCameraData::configureEntities(V4L2SubdeviceFormat sensorFormat,
+ 	const MediaEntity *csi2 = csi2Subdev_->entity();
+ 	const MediaEntity *fe = feSubdev_->entity();
+ 
+-	for (MediaLink *link : csi2->pads()[csiVideoSourcePad]->links()) {
+-		if (link->sink()->entity()->name() == "rp1-cfe-csi2_ch0" ||
+-		    link->sink()->entity()->name() == "rp1-cfe-csi2-ch0")
+-			link->setEnabled(false);
+-		else if (link->sink()->entity()->name() == "pisp-fe")
+-			link->setEnabled(true);
++	if (upstreamCfe_) {
++		/*
++		 * Source pads 1 through 4 represent CSI-2 channels 0 through 3.
++		 * Route channel 0 to the PiSP frontend and remove any stale PiSP
++		 * link left enabled on another channel.
++		 */
++		for (unsigned int padIndex = 1; padIndex < csi2->pads().size();
++		     ++padIndex) {
++			for (MediaLink *link : csi2->pads()[padIndex]->links()) {
++				if (link->sink()->entity()->name() == "pisp-fe")
++					link->setEnabled(false);
++			}
++		}
++
++		for (MediaLink *link : csi2->pads()[csiVideoSourcePad]->links()) {
++			if (link->sink()->entity()->name() == "rp1-cfe-csi2-ch0")
++				link->setEnabled(false);
++			else if (link->sink()->entity()->name() == "pisp-fe")
++				link->setEnabled(true);
++		}
++	} else {
++		for (MediaLink *link : csi2->pads()[csiVideoSourcePad]->links()) {
++			if (link->sink()->entity()->name() == "rp1-cfe-csi2_ch0")
++				link->setEnabled(false);
++			else if (link->sink()->entity()->name() == "pisp-fe")
++				link->setEnabled(true);
++		}
+ 	}
+ 
+-	csi2->pads()[csiMetaSourcePad]->links()[0]->setEnabled(sensorMetadata_);
++	if (!upstreamCfe_)
++		csi2->pads()[csiMetaSourcePad]->links()[0]->setEnabled(sensorMetadata_);
+ 
+ 	fe->pads()[feConfigSinkPad]->links()[0]->setEnabled(true);
+ 	fe->pads()[feVideo0SourcePad]->links()[0]->setEnabled(true);
+@@ -2213,7 +2247,7 @@ int PiSPCameraData::configureEntities(V4L2SubdeviceFormat sensorFormat,
+ 	if (ret)
+ 		return ret;
+ 
+-	if (sensorMetadata_) {
++	if (sensorMetadata_ && !upstreamCfe_) {
+ 		ret = csi2Subdev_->setFormat(csiMetaSinkPad, &embeddedFormat);
+ 		if (ret)
+ 			return ret;

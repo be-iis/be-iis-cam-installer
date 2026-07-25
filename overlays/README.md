@@ -1,35 +1,71 @@
-# Legacy MAX96714 Device Tree overlay
+# Device Tree overlay
 
-> This directory describes the earlier MAX96714 topology. It is retained for
-> reference and is not installed by the root `make all` target. The tested
-> BE-IIS-2CAM/MAX96716A profile is initialized through I2C from
-> `profiles/be-iis-2cam-imx708/init.sh`.
+The overlay is generated from
+`profiles/max96716a-max96717-imx708-be-iis.json` with the official Analog
+Devices `gen_gmsl_dts` generator. The build uses the bundled
+`templates/imx708-be-iis.dtsi.in` camera template in a temporary copy of the
+generator and does not modify the ADI source tree.
 
-`max96714-max96717-imx708-overlay.dts` describes this pipeline:
+## Corrected MAX96717 pin assignment
 
-```text
-IMX708 -> MAX96717F -> GMSL2 -> MAX96714F -> Raspberry Pi CSI-2
+The MAX96717 pinctrl binding requires a `pins` property. The camera template
+therefore contains:
+
+```dts
+rclk-mfp2-state {
+    function = "rclkout";
+    pins = "mfp2";
+};
 ```
 
-Build and install it with:
+Using `groups = "mfp2"` does not match the ADI binding. It can leave the
+serializer reference clock on the wrong MFP and make acquisition of MFP4 as
+the IMX708 XCLR GPIO fail with `-EREMOTEIO`.
+
+The board profile uses:
+
+- MFP2: 24 MHz IMX708 reference clock
+- MFP3: camera supply enable
+- MFP4: IMX708 XCLR
+- MFP1: unchanged hardware LOCK output
+
+All four IMX708 supply names point to the board's camera-enable regulator.
+
+## Remote I2C aliases and focus actuator
+
+The BE-IIS profile uses remote I2C aliases `0x52` and `0x53`. This avoids the
+address collision previously caused by the `0x50` and `0x51` alias pool.
+
+The focus actuator is disabled in the BE-IIS profile. The generated overlay
+therefore contains neither the IMX708 `lens-focus` property nor the
+`dw9817@c` node. This prevents an absent or incompatible VCM from producing
+remote I2C errors during camera startup.
+
+Other profiles can enable the VCM by setting:
+
+```json
+"vcm_enabled": true
+```
+
+## Build and install
 
 ```bash
-./build_install_overlay.sh
+./build-install-overlay.sh \
+    --adi-linux-dir "$HOME/src/adi-linux"
 ```
 
-Default configuration:
+Build without installing:
 
-- CAM/DISP1 (`cam0` selects CAM/DISP0)
-- MAX96714F: Linux address `0x28`
-- MAX96717F: Linux address `0x40`
-- IMX708: address `0x1a`
-- two CSI-2 lanes at 450 MHz
-- MAX96717 MFP3: camera enable
-- MAX96717 MFP4: IMX708 XCLR/reset
-- DW9817 autofocus enabled
+```bash
+./build-install-overlay.sh \
+    --adi-linux-dir "$HOME/src/adi-linux" \
+    --no-install
+```
 
-The remote camera board must provide the actual sensor supply rails. The
-overlay models MFP3 as a fixed-regulator enable signal.
+Generated files are written to `overlays/build/`.
 
-The MAX96714 MFP7-MFP10 assignments are not implemented because the current
-MAX96714 Linux driver does not provide GPIO forwarding support.
+Install this overlay in `config.txt`:
+
+```ini
+dtoverlay=max96716a-max96717-imx708-be-iis
+```

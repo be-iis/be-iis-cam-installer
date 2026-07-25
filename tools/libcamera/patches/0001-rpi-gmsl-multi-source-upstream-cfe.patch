@@ -1,0 +1,114 @@
+diff --git a/src/libcamera/pipeline/rpi/common/pipeline_base.cpp b/src/libcamera/pipeline/rpi/common/pipeline_base.cpp
+index 5a5acf6..7108ffb 100644
+--- a/src/libcamera/pipeline/rpi/common/pipeline_base.cpp
++++ b/src/libcamera/pipeline/rpi/common/pipeline_base.cpp
+@@ -1059,38 +1059,36 @@ bool CameraData::enumerateVideoDevices(MediaLink *link, const std::string &front
+ 	    entity->function() != MEDIA_ENT_F_VID_IF_BRIDGE)
+ 		return false;
+ 
+-	/* Find the source pad for this Video Mux or Bridge device. */
+-	const MediaPad *sourcePad = nullptr;
+-	for (const MediaPad *pad : entity->pads()) {
+-		if (pad->flags() & MEDIA_PAD_FL_SOURCE) {
+-			/*
+-			 * We can only deal with devices that have a single source
+-			 * pad. If this device has multiple source pads, ignore it
+-			 * and this branch in the cascade.
+-			 */
+-			if (sourcePad)
+-				return false;
+-
+-			sourcePad = pad;
+-		}
+-	}
+-
+ 	LOG(RPI, Debug) << "Found video mux device " << entity->name()
+ 			<< " linked to sink pad " << sinkPad->index();
+ 
++	const std::size_t bridgeCount = bridgeDevices_.size();
+ 	bridgeDevices_.emplace_back(std::make_unique<V4L2Subdevice>(entity), link);
+ 	bridgeDevices_.back().first->open();
+ 
+ 	/*
+-	 * Iterate through all the sink pad links down the cascade to find any
+-	 * other Video Mux and Bridge devices.
++	 * Follow every source pad until a path to the frontend is found. Bridges
++	 * such as GMSL deserialisers may expose one source pad per CSI-2 PHY even
++	 * when only one PHY participates in the active camera pipeline.
+ 	 */
+-	for (MediaLink *l : sourcePad->links()) {
+-		frontendFound = enumerateVideoDevices(l, frontend);
++	for (const MediaPad *sourcePad : entity->pads()) {
++		if (!(sourcePad->flags() & MEDIA_PAD_FL_SOURCE))
++			continue;
++
++		for (MediaLink *l : sourcePad->links()) {
++			frontendFound = enumerateVideoDevices(l, frontend);
++			if (frontendFound)
++				break;
++		}
++
+ 		if (frontendFound)
+ 			break;
+ 	}
+ 
++	/* Discard devices added while exploring a branch that led nowhere. */
++	if (!frontendFound)
++		bridgeDevices_.resize(bridgeCount);
++
+ 	/* This identifies the end of our entity enumeration recursion. */
+ 	if (link->source()->entity()->function() == MEDIA_ENT_F_CAM_SENSOR) {
+ 		/*
+diff --git a/src/libcamera/pipeline/rpi/pisp/pisp.cpp b/src/libcamera/pipeline/rpi/pisp/pisp.cpp
+index c9d89d5..b490fc2 100644
+--- a/src/libcamera/pipeline/rpi/pisp/pisp.cpp
++++ b/src/libcamera/pipeline/rpi/pisp/pisp.cpp
+@@ -887,6 +887,14 @@ bool PipelineHandlerPiSP::match(DeviceEnumerator *enumerator)
+ 		cfe.add("rp1-cfe-fe_config");
+ 		std::shared_ptr<MediaDevice> cfeDevice = acquireMediaDevice(enumerator, cfe);
+ 
++		if (!cfeDevice) {
++			DeviceMatch upstreamCfe("rp1-cfe");
++			upstreamCfe.add("rp1-cfe-fe-image0");
++			upstreamCfe.add("rp1-cfe-fe-stats");
++			upstreamCfe.add("rp1-cfe-fe-config");
++			cfeDevice = acquireMediaDevice(enumerator, upstreamCfe);
++		}
++
+ 		if (!cfeDevice) {
+ 			LOG(RPI, Debug) << "Unable to acquire a CFE instance";
+ 			break;
+@@ -1072,10 +1080,19 @@ int PipelineHandlerPiSP::platformRegister(std::unique_ptr<RPi::CameraData> &came
+ 	PiSPCameraData *data = static_cast<PiSPCameraData *>(cameraData.get());
+ 	int ret;
+ 
+-	MediaEntity *cfeImage = cfe->getEntityByName("rp1-cfe-fe_image0");
+-	MediaEntity *cfeEmbedded = cfe->getEntityByName("rp1-cfe-embedded");
+-	MediaEntity *cfeStats = cfe->getEntityByName("rp1-cfe-fe_stats");
+-	MediaEntity *cfeConfig = cfe->getEntityByName("rp1-cfe-fe_config");
++	const bool upstreamCfe = cfe->getEntityByName("rp1-cfe-fe-image0");
++	MediaEntity *cfeImage = cfe->getEntityByName(upstreamCfe
++						     ? "rp1-cfe-fe-image0"
++						     : "rp1-cfe-fe_image0");
++	MediaEntity *cfeEmbedded = cfe->getEntityByName(upstreamCfe
++							? "rp1-cfe-csi2-ch1"
++							: "rp1-cfe-embedded");
++	MediaEntity *cfeStats = cfe->getEntityByName(upstreamCfe
++						     ? "rp1-cfe-fe-stats"
++						     : "rp1-cfe-fe_stats");
++	MediaEntity *cfeConfig = cfe->getEntityByName(upstreamCfe
++						      ? "rp1-cfe-fe-config"
++						      : "rp1-cfe-fe_config");
+ 	MediaEntity *ispInput = isp->getEntityByName("pispbe-input");
+ 	MediaEntity *IpaPrepare = isp->getEntityByName("pispbe-config");
+ 	MediaEntity *ispOutput0 = isp->getEntityByName("pispbe-output0");
+@@ -2178,7 +2195,8 @@ int PiSPCameraData::configureEntities(V4L2SubdeviceFormat sensorFormat,
+ 	const MediaEntity *fe = feSubdev_->entity();
+ 
+ 	for (MediaLink *link : csi2->pads()[csiVideoSourcePad]->links()) {
+-		if (link->sink()->entity()->name() == "rp1-cfe-csi2_ch0")
++		if (link->sink()->entity()->name() == "rp1-cfe-csi2_ch0" ||
++		    link->sink()->entity()->name() == "rp1-cfe-csi2-ch0")
+ 			link->setEnabled(false);
+ 		else if (link->sink()->entity()->name() == "pisp-fe")
+ 			link->setEnabled(true);
