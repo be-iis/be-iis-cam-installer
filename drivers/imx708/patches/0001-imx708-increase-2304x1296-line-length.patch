@@ -1,0 +1,21 @@
+From: BE-IIS <info@be-iis.eu>
+Subject: [PATCH] media: imx708: increase 2x2-binned line length
+
+Increase LINE_LENGTH_PCK for the 2304x1296 2x2-binned mode from
+0x1e90 to 0x2000.
+
+The additional horizontal blanking provides sufficient inter-line
+spacing for the MAX96717/MAX96716A GMSL2 video path. Keep the mode
+description synchronized with the sensor register list so that the
+V4L2 HBLANK control reports the correct value.
+
+--- a/imx708.c
++++ b/imx708.c
+@@ -390,2 +390,2 @@ static const struct imx708_reg mode_2x2binned_regs[] = {
+-	{0x0342, 0x1E},
+-	{0x0343, 0x90},
++	{0x0342, 0x20},
++	{0x0343, 0x00},
+@@ -702 +702 @@ static const struct imx708_mode supported_modes_2lane[] = {
+-		.line_length_pix = 0x1e90,
++		.line_length_pix = 0x2000,

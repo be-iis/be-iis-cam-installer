@@ -1,4 +1,9 @@
-# Device Tree overlay
+# Legacy MAX96714 Device Tree overlay
+
+> This directory describes the earlier MAX96714 topology. It is retained for
+> reference and is not installed by the root `make all` target. The tested
+> BE-IIS-2CAM/MAX96716A profile is initialized through I2C from
+> `profiles/be-iis-2cam-imx708/init.sh`.
 
 `max96714-max96717-imx708-overlay.dts` describes this pipeline:
 

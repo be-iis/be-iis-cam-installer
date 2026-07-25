@@ -1,0 +1,15 @@
+[Unit]
+Description=Initialize BE-IIS MAX96716A/MAX96717 IMX708 camera
+Wants=dev-i2c\x2d11.device
+After=systemd-modules-load.service dev-i2c\x2d11.device
+ConditionPathExists=/dev/i2c-11
+
+[Service]
+Type=oneshot
+ExecStart=/usr/libexec/be-iis-camera/init.sh init
+ExecReload=/usr/libexec/be-iis-camera/init.sh init
+RemainAfterExit=yes
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

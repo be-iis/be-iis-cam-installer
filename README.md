@@ -1,86 +1,159 @@
 # BE-IIS Camera Installer
 
-Build and installation tools for a Raspberry Pi GMSL2 camera pipeline based on:
+Linux integration for the BE-IIS Raspberry Pi GMSL2 camera platform.
 
 ```text
-Sony IMX708 -> MAX96717F -> GMSL2 -> MAX96714F -> Raspberry Pi CSI-2
+IMX708 → BE-IIS-GMSL2-SER (MAX96717)
+       → GMSL2 Link A, 6 Gbit/s
+       → BE-IIS-2CAM (MAX96716A)
+       → CSI-2 Port A, 2 lanes
+       → Raspberry Pi 5 CAM/DISP1
 ```
 
-## Supported configuration
+The repository contains the tested register initialization, a persistent
+systemd service, the IMX708 horizontal-blanking driver patch, capture tools,
+GStreamer helpers, diagnostics, and the legacy MAX96714 overlay work.
 
-- Raspberry Pi kernel 6.12 or newer
-- MAX96714F deserializer at Linux 7-bit I2C address `0x28`
-  (`0x50` in Maxim 8-bit notation)
-- MAX96717F serializer at Linux 7-bit I2C address `0x40`
-  (CFG pulled down)
-- Sony IMX708 sensor at `0x1a`
-- two CSI-2 data lanes at 450 MHz
-- MAX96717 MFP3 as camera enable
-- MAX96717 MFP4 as IMX708 XCLR/reset
-- optional DW9817 autofocus controller at `0x0c`
+## Tested configuration
 
-## Installation
+- Raspberry Pi 5
+- BE-IIS-2CAM HAT with MAX96716A at I2C address `0x28`
+- BE-IIS-GMSL2-SER sensor head with MAX96717 at `0x40`
+- Sony IMX708 at `0x1a`
+- TPL0102-100 digital potentiometer at `0x51`
+- Linux I2C bus 11
+- CAM/DISP1
+- 2304 × 1296, packed RAW10, two CSI-2 lanes
+- 450 MHz CSI-2 clock (900 Mbit/s per lane using DDR)
 
-Install the basic build tools and the matching Raspberry Pi kernel headers:
+The 2304 × 1296 mode needs more horizontal blanking through this GMSL2
+pipeline. The included driver patch changes `LINE_LENGTH_PCK` from `0x1e90`
+to the tested, conservative value `0x2000`.
+
+## Quick start
+
+Install build and runtime dependencies:
 
 ```bash
 sudo apt update
-sudo apt install -y build-essential wget patch device-tree-compiler raspberrypi-kernel-headers
+sudo apt install -y \
+    build-essential curl patch raspberrypi-kernel-headers \
+    i2c-tools media-ctl v4l-utils device-tree-compiler \
+    rpicam-apps python3-numpy python3-opencv \
+    gstreamer1.0-tools gstreamer1.0-libcamera \
+    gstreamer1.0-plugins-base gstreamer1.0-plugins-good \
+    gstreamer1.0-plugins-bad
 ```
 
-Clone the repository and run:
+Run the complete installation:
 
 ```bash
-chmod +x install.sh
-./install.sh
+make all
 ```
 
-The installer builds and installs all three kernel modules and the Device Tree
-overlay. It does not modify `config.txt` automatically.
+This command:
 
-Add this line to `/boot/firmware/config.txt` for CAM/DISP1:
+1. downloads and patches the IMX708 driver matching the running kernel;
+2. builds and installs `imx708.ko`;
+3. installs the BE-IIS initialization and capture tools;
+4. enables `dtparam=i2c_arm=on` in `/boot/firmware/config.txt`;
+5. installs `i2c-dev` for boot;
+6. enables the one-shot initialization service.
+
+It **does not reboot**. Reboot explicitly when convenient:
+
+```bash
+sudo reboot
+```
+
+After reboot:
+
+```bash
+systemctl status be-iis-camera-init.service
+sudo beiis-camera-init status
+```
+
+## Capture
+
+Still image with the 3 MP profile:
+
+```bash
+beiis-capture-image --megapixels 3 --output image.jpg
+```
+
+Still image plus DNG:
+
+```bash
+beiis-capture-image --megapixels 3 --raw --output image.jpg
+```
+
+H.264 video:
+
+```bash
+beiis-capture-video --megapixels 3 --duration 10 --output video.h264
+```
+
+GStreamer live preview:
+
+```bash
+beiis-gst-preview --megapixels 3
+```
+
+GStreamer recording:
+
+```bash
+beiis-gst-record --megapixels 3 --duration 10 --output video.mp4
+```
+
+Available named resolution profiles are `1`, `3`, and `12` megapixels.
+Explicit `WIDTHxHEIGHT` values are accepted as well.
+
+## Development workflow
+
+The IMX708 driver package supports the requested staged workflow:
+
+```bash
+make prepare
+make fetch
+make patch
+make
+make install
+```
+
+Or run all build and installation steps:
+
+```bash
+make all
+```
+
+No target reboots the Pi.
+
+## Repository layout
 
 ```text
-dtoverlay=max96714-max96717-imx708
+config/                         boot and module configuration
+docs/                           installation and troubleshooting
+drivers/imx708/                 reproducible external-module build and patch
+hardware/                       board-specific documentation
+overlays/                       Device Tree sources, including legacy work
+profiles/be-iis-2cam-imx708/    tested MAX96716A/MAX96717/IMX708 setup
+systemd/                        one-shot boot initialization
+tools/capture/                  rpicam image and video tools
+tools/gstreamer/                preview and recording pipelines
+tools/raw/                      packed RAW10 conversion
 ```
 
-For CAM/DISP0 use:
+## Important notes
 
-```text
-dtoverlay=max96714-max96717-imx708,cam0
-```
+- The active MAX96716A configuration is initialized through I2C. It does not
+  depend on the legacy MAX96714 overlay.
+- Dynamic overlay loading can emit Device Tree overlay removal warnings.
+  Persistent boot integration should eventually move the complete topology
+  into a dedicated production overlay.
+- A historical `get_throttled=0x50000` indicates past undervoltage even when
+  the current supply is stable. Use a reliable 5 V supply.
+- Back up a known-good register dump before changing serializer or
+  deserializer timing.
 
-Reboot the Raspberry Pi after changing `config.txt`.
-
-## Important limitations
-
-The current MAX96714 Linux driver does not expose the deserializer MFP pins as
-a GPIO controller. The overlay therefore controls MAX96717 MFP3 and MFP4
-directly through the GMSL2 I2C control channel. MAX96714 MFP7 through MFP10 are
-not configured by this version.
-
-The MAX96717 build applies a clearly marked local patch for a GPIO callback
-that otherwise ignores low output values. This patch is not yet an accepted
-upstream Linux patch and must be validated on the target hardware.
-
-## Project structure
-
-```text
-be-iis-cam-installer/
-├── README.md
-├── install.sh
-├── tools/
-│   ├── README.md
-│   └── kernel/
-│       ├── README.md
-│       ├── imx708_mod_build.sh
-│       ├── max96714_mod_build.sh
-│       ├── max96717_mod_build.sh
-│       └── patches/
-│           ├── README.md
-│           └── max96717-gpio-set-value.patch
-└── overlays/
-    ├── README.md
-    ├── max96714-max96717-imx708-overlay.dts
-    └── build_install_overlay.sh
-```
+See [Installation](docs/installation.md) and
+[Troubleshooting](docs/troubleshooting.md) for details.
