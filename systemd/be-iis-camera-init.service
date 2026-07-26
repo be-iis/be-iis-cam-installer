@@ -1,7 +1,6 @@
 [Unit]
 Description=Initialize BE-IIS MAX96716A/MAX96717 IMX708 camera
-Wants=dev-i2c\x2d11.device
-After=systemd-modules-load.service dev-i2c\x2d11.device
+After=systemd-modules-load.service
 ConditionPathExists=/dev/i2c-11
 
 [Service]

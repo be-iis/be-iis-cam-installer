@@ -39,10 +39,12 @@ resolve_mode()
 
 check_camera()
 {
+	local cameras
+
 	need_command rpicam-hello
 
-	if ! rpicam-hello --list-cameras 2>/dev/null |
-		grep -qE '^[0-9]+[[:space:]]*:'; then
+	cameras="$(rpicam-hello --list-cameras 2>&1 || true)"
+	if ! grep -qE '^[0-9]+[[:space:]]*:' <<<"$cameras"; then
 		die "no camera found; run: sudo systemctl restart be-iis-camera-init.service"
 	fi
 }

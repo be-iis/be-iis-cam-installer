@@ -87,11 +87,14 @@ Still image plus DNG:
 beiis-capture-image --megapixels 3 --raw --output image.jpg
 ```
 
-H.264 video:
+MJPEG video (portable Raspberry Pi 5 default):
 
 ```bash
-beiis-capture-video --megapixels 3 --duration 10 --output video.h264
+beiis-capture-video --megapixels 3 --duration 10 --output video.mjpeg
 ```
+
+H.264 can still be selected explicitly with `--codec h264` when a suitable
+encoder is installed.
 
 GStreamer live preview:
 
