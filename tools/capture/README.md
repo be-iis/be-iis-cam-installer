@@ -6,8 +6,12 @@ over `rpicam-still` and `rpicam-vid`.
 ```bash
 ./capture-image.sh --megapixels 3 --output image.jpg
 ./capture-image.sh --megapixels 3 --raw --output image.jpg
-./capture-video.sh --megapixels 1 --duration 30 --output video.h264
+./capture-video.sh --megapixels 3 --duration 10 --output video.mjpeg
 ```
+
+MJPEG is the default because Raspberry Pi 5 does not provide a hardware H.264
+encoder. H.264 remains selectable with `--codec h264` when a suitable encoder
+is available.
 
 Profiles:
 
