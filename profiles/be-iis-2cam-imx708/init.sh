@@ -135,13 +135,13 @@ find_media_graph()
 	graph="$(media-ctl -d "$MEDIA_DEV" -p)"
 	VIDEO_NODE="$(
 		awk '
-			/entity .*rp1-cfe-csi2-ch0/ { found=1; next }
+			/entity .*rp1-cfe-csi2_ch0/ { found=1; next }
 			found && /device node name/ { print $NF; exit }
 		' <<<"$graph"
 	)"
 
 	[[ -n "$VIDEO_NODE" && -e "$VIDEO_NODE" ]] ||
-		die "Could not find the rp1-cfe-csi2-ch0 video node."
+		die "Could not find the rp1-cfe-csi2_ch0 video node."
 	[[ -n "$SENSOR_NODE" && -e "$SENSOR_NODE" ]] ||
 		die "Could not find the IMX708 V4L2 subdevice."
 }
@@ -313,16 +313,16 @@ configure_media_graph()
 
 	# Disable all PiSP links. Some may already be disabled.
 	media-ctl -d "$MEDIA_DEV" \
-		--links '"csi2":1 -> "pisp-fe":0 [0]' || true
+		--links '"csi2":4 -> "pisp-fe":0 [0]' || true
 	media-ctl -d "$MEDIA_DEV" \
-		--links '"rp1-cfe-fe-config":0 -> "pisp-fe":1 [0]' || true
+		--links '"rp1-cfe-fe_config":0 -> "pisp-fe":1 [0]' || true
 	media-ctl -d "$MEDIA_DEV" \
-		--links '"pisp-fe":2 -> "rp1-cfe-fe-image0":0 [0]' || true
+		--links '"pisp-fe":2 -> "rp1-cfe-fe_image0":0 [0]' || true
 	media-ctl -d "$MEDIA_DEV" \
-		--links '"pisp-fe":4 -> "rp1-cfe-fe-stats":0 [0]' || true
+		--links '"pisp-fe":4 -> "rp1-cfe-fe_stats":0 [0]' || true
 
 	media-ctl -d "$MEDIA_DEV" \
-		--links '"csi2":1 -> "rp1-cfe-csi2-ch0":0 [1]'
+		--links '"csi2":4 -> "rp1-cfe-csi2_ch0":0 [1]'
 
 	media-ctl -d "$MEDIA_DEV" \
 		--set-v4l2 \
