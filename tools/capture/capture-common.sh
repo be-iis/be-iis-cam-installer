@@ -51,6 +51,14 @@ validate_autofocus_options()
 	fi
 }
 
+validate_hdr_options()
+{
+	case "$hdr_mode" in
+		off|auto|single-exp) ;;
+		*) die "invalid HDR mode '$hdr_mode'; use off, auto, or single-exp" ;;
+	esac
+}
+
 append_autofocus_args()
 {
 	local -n destination="$1"
