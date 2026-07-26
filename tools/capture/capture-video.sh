@@ -8,11 +8,12 @@ common=/usr/libexec/be-iis-camera/capture-common.sh
 source "$common"
 
 megapixels=3
-output=video.h264
+output=
 duration=10
 framerate=30
 bitrate=12000000
-codec=h264
+quality=85
+codec=mjpeg
 camera=0
 
 usage()
@@ -25,6 +26,7 @@ Usage: beiis-capture-video [options]
   -d, --duration SECONDS
       --framerate FPS
       --bitrate BITS_PER_SECOND
+      --quality 1..100
       --codec h264|mjpeg
       --camera INDEX
   -h, --help
@@ -38,6 +40,7 @@ while (($#)); do
 		-d|--duration) duration="$2"; shift 2 ;;
 		--framerate) framerate="$2"; shift 2 ;;
 		--bitrate) bitrate="$2"; shift 2 ;;
+		--quality) quality="$2"; shift 2 ;;
 		--codec) codec="$2"; shift 2 ;;
 		--camera) camera="$2"; shift 2 ;;
 		-h|--help) usage; exit 0 ;;
@@ -54,17 +57,31 @@ case "$codec" in
 	*) die "unsupported codec: $codec" ;;
 esac
 
+if [[ -z "$output" ]]; then
+	case "$codec" in
+		h264) output=video.h264 ;;
+		mjpeg) output=video.mjpeg ;;
+	esac
+fi
+
 printf 'Recording %sx%s at %s fps to %s\n' \
 	"$CAPTURE_WIDTH" "$CAPTURE_HEIGHT" "$framerate" "$output"
 
-rpicam-vid \
-	--camera "$camera" \
-	--nopreview \
-	--mode "${CAPTURE_WIDTH}:${CAPTURE_HEIGHT}:10:P" \
-	--width "$CAPTURE_WIDTH" \
-	--height "$CAPTURE_HEIGHT" \
-	--framerate "$framerate" \
-	--codec "$codec" \
-	--bitrate "$bitrate" \
-	--timeout "$((duration * 1000))" \
+args=(
+	--camera "$camera"
+	--nopreview
+	--mode "${CAPTURE_WIDTH}:${CAPTURE_HEIGHT}:10:P"
+	--width "$CAPTURE_WIDTH"
+	--height "$CAPTURE_HEIGHT"
+	--framerate "$framerate"
+	--codec "$codec"
+	--timeout "$((duration * 1000))"
 	--output "$output"
+)
+
+case "$codec" in
+	h264) args+=(--bitrate "$bitrate") ;;
+	mjpeg) args+=(--quality "$quality") ;;
+esac
+
+rpicam-vid "${args[@]}"
