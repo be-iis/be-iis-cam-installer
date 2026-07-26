@@ -24,6 +24,19 @@ The autofocus mode, range, speed and metering window can be selected with
 `--autofocus-mode`, `--autofocus-range`, `--autofocus-speed` and
 `--autofocus-window`.
 
+HDR is disabled by default and can be enabled for still images or video:
+
+```bash
+./capture-image.sh --hdr auto --output hdr.jpg
+./capture-video.sh --hdr auto --output hdr-video.mjpeg
+./capture-image.sh --hdr single-exp --output onboard-hdr.jpg
+```
+
+`--hdr auto` prefers a sensor HDR mode when available and otherwise uses the
+Raspberry Pi 5 on-board HDR path. `--hdr single-exp` explicitly selects the
+on-board single-exposure HDR path. Use `--hdr off` or `--no-hdr` to disable
+HDR.
+
 MJPEG is the default because Raspberry Pi 5 does not provide a hardware H.264
 encoder. H.264 remains selectable with `--codec h264` when a suitable encoder
 is available.
