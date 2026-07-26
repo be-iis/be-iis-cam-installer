@@ -12,16 +12,9 @@
       {
         "phy_idx": 1,
         "num_lanes": 2,
-        "link_frequencies": [
-          450000000
-        ],
-        "clock_lanes": [
-          0
-        ],
-        "data_lanes": [
-          1,
-          2
-        ]
+        "link_frequencies": [450000000],
+        "clock_lanes": [0],
+        "data_lanes": [1, 2]
       }
     ],
     "links": [
@@ -32,13 +25,10 @@
             "name": "imx708-be-iis",
             "reset_pin": 3,
             "xclr_pin": 4,
-            "vcm_enabled": false
+            "vcm_enabled": true
           }
         ],
-        "pool_addrs": [
-          "0x52",
-          "0x53"
-        ]
+        "pool_addrs": ["0x52", "0x53"]
       }
     ]
   }
