@@ -142,10 +142,12 @@ fi
 grep -q 'reset-gpios = .* 4 0>;' "$generated_dts" ||
 	die "generated DTS does not route IMX708 XCLR to MAX96717 MFP4"
 if [[ "$profile" == "$DEFAULT_PROFILE" ]]; then
-	if grep -q 'lens-focus' "$generated_dts" ||
-		grep -q 'dw9817@c' "$generated_dts"; then
-		die "generated DTS unexpectedly enables the VCM"
-	fi
+	grep -q 'lens-focus' "$generated_dts" ||
+		die "generated DTS does not connect the IMX708 to its focus actuator"
+	grep -q 'dw9817@c' "$generated_dts" ||
+		die "generated DTS does not enable the DW9817 VCM at 0x0c"
+	grep -q 'compatible = "dongwoon,dw9817-vcm";' "$generated_dts" ||
+		die "generated DTS does not use the DW9817 VCM binding"
 	grep -q 'i2c-alias-pool = <0x52 0x53>;' "$generated_dts" ||
 		die "generated DTS does not use the collision-free remote I2C alias pool"
 fi

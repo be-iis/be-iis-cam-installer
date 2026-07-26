@@ -36,15 +36,15 @@ All four IMX708 supply names point to the board's camera-enable regulator.
 The BE-IIS profile uses remote I2C aliases `0x52` and `0x53`. This avoids the
 address collision previously caused by the `0x50` and `0x51` alias pool.
 
-The focus actuator is disabled in the BE-IIS profile. The generated overlay
-therefore contains neither the IMX708 `lens-focus` property nor the
-`dw9817@c` node. This prevents an absent or incompatible VCM from producing
-remote I2C errors during camera startup.
+The DW9817 focus actuator is enabled by default in the BE-IIS profile. The
+generated overlay connects the IMX708 through `lens-focus` and creates the
+VCM at remote I2C address `0x0c`.
 
-Other profiles can enable the VCM by setting:
+A profile for a fixed-focus camera or a camera without a compatible VCM can
+disable autofocus support:
 
 ```json
-"vcm_enabled": true
+"vcm_enabled": false
 ```
 
 ## Build and install

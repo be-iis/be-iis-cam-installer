@@ -9,6 +9,21 @@ over `rpicam-still` and `rpicam-vid`.
 ./capture-video.sh --megapixels 3 --duration 10 --output video.mjpeg
 ```
 
+Autofocus is enabled by default. Still images use one-shot autofocus during
+capture; video uses continuous autofocus. Examples:
+
+```bash
+./capture-image.sh --autofocus-range macro --output close-up.jpg
+./capture-video.sh --autofocus-speed fast --output video.mjpeg
+./capture-image.sh --no-autofocus --output fixed-focus.jpg
+./capture-image.sh --autofocus-mode manual --lens-position 2.0 \
+    --output manual-focus.jpg
+```
+
+The autofocus mode, range, speed and metering window can be selected with
+`--autofocus-mode`, `--autofocus-range`, `--autofocus-speed` and
+`--autofocus-window`.
+
 MJPEG is the default because Raspberry Pi 5 does not provide a hardware H.264
 encoder. H.264 remains selectable with `--codec h264` when a suitable encoder
 is available.
