@@ -30,7 +30,7 @@ install-userspace:
 	sudo install -D -m 0755 tools/raw/raw10-to-png.py $(PREFIX)/bin/beiis-raw10-to-png
 	sudo install -D -m 0644 systemd/be-iis-camera-init.service $(SYSTEMD_DIR)/be-iis-camera-init.service
 	sudo ln -sfn $(LIBEXEC_DIR)/init.sh $(PREFIX)/bin/beiis-camera-init
-	sudo ln -sfn $(LIBEXEC_DIR)/init-alerts.sh $(PREFIX)/bin/beiis-ina226-init-alerts
+	sudo ln -sfn $(LIBEXEC_DIR)/ina226-init-alerts.sh $(PREFIX)/bin/beiis-ina226-init-alerts
 	sudo ln -sfn $(LIBEXEC_DIR)/set-ocp.sh $(PREFIX)/bin/beiis-ina226-set-ocp
 	sudo ln -sfn $(LIBEXEC_DIR)/set-ovp.sh $(PREFIX)/bin/beiis-ina226-set-ovp
 	sudo ln -sfn $(LIBEXEC_DIR)/clear-alert.sh $(PREFIX)/bin/beiis-ina226-clear-alert
