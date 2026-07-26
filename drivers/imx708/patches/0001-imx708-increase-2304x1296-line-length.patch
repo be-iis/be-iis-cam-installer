@@ -1,21 +1,33 @@
 From: BE-IIS <info@be-iis.eu>
-Subject: [PATCH] media: imx708: increase 2x2-binned line length
+Subject: [PATCH] media: imx708: increase GMSL2 line lengths
 
-Increase LINE_LENGTH_PCK for the 2304x1296 2x2-binned mode from
-0x1e90 to 0x2000.
+Increase LINE_LENGTH_PCK for both non-HDR modes used through the
+MAX96717/MAX96716A GMSL2 path:
 
-The additional horizontal blanking provides sufficient inter-line
-spacing for the MAX96717/MAX96716A GMSL2 video path. Keep the mode
-description synchronized with the sensor register list so that the
-V4L2 HBLANK control reports the correct value.
+- 4608x2592 full resolution: 0x3d20 -> 0x4000
+- 2304x1296 2x2 binned:     0x1e90 -> 0x2000
+
+The full-resolution value remains exactly twice the binned value. The
+additional horizontal blanking provides more inter-line spacing for the
+serializer, deserializer and Raspberry Pi CFE path. Keep the mode
+descriptions synchronized with the sensor register lists so that the
+V4L2 HBLANK control reports the correct values.
 
 --- a/imx708.c
 +++ b/imx708.c
+@@ -297,2 +297,2 @@ static const struct imx708_reg mode_4608x2592_regs[] = {
+-	{0x0342, 0x3D},
+-	{0x0343, 0x20},
++	{0x0342, 0x40},
++	{0x0343, 0x00},
 @@ -390,2 +390,2 @@ static const struct imx708_reg mode_2x2binned_regs[] = {
 -	{0x0342, 0x1E},
 -	{0x0343, 0x90},
 +	{0x0342, 0x20},
 +	{0x0343, 0x00},
-@@ -702 +702 @@ static const struct imx708_mode supported_modes_2lane[] = {
+@@ -681 +681 @@ static const struct imx708_mode supported_modes_10bit_no_hdr[] = {
+-		.line_length_pix = 0x3d20,
++		.line_length_pix = 0x4000,
+@@ -702 +702 @@ static const struct imx708_mode supported_modes_10bit_no_hdr[] = {
 -		.line_length_pix = 0x1e90,
 +		.line_length_pix = 0x2000,

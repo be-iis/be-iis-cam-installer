@@ -15,23 +15,26 @@ install-driver:
 	$(MAKE) -C drivers/imx708 install
 
 install-userspace:
-	sudo install -D -m 0755 profiles/be-iis-2cam-imx708/init.sh \
-		$(LIBEXEC_DIR)/init.sh
-	sudo install -D -m 0755 tools/capture/capture-image.sh \
-		$(PREFIX)/bin/beiis-capture-image
-	sudo install -D -m 0755 tools/capture/capture-video.sh \
-		$(PREFIX)/bin/beiis-capture-video
-	sudo install -D -m 0644 tools/capture/capture-common.sh \
-		$(LIBEXEC_DIR)/capture-common.sh
-	sudo install -D -m 0755 tools/gstreamer/preview.sh \
-		$(PREFIX)/bin/beiis-gst-preview
-	sudo install -D -m 0755 tools/gstreamer/record.sh \
-		$(PREFIX)/bin/beiis-gst-record
-	sudo install -D -m 0755 tools/raw/raw10-to-png.py \
-		$(PREFIX)/bin/beiis-raw10-to-png
-	sudo install -D -m 0644 systemd/be-iis-camera-init.service \
-		$(SYSTEMD_DIR)/be-iis-camera-init.service
+	sudo install -D -m 0755 profiles/be-iis-2cam-imx708/init.sh $(LIBEXEC_DIR)/init.sh
+	sudo install -D -m 0644 tools/ina226/ina226-common.sh $(LIBEXEC_DIR)/ina226-common.sh
+	sudo install -D -m 0755 tools/ina226/init-alerts.sh $(LIBEXEC_DIR)/ina226-init-alerts.sh
+	sudo install -D -m 0755 tools/ina226/set-ocp.sh $(LIBEXEC_DIR)/set-ocp.sh
+	sudo install -D -m 0755 tools/ina226/set-ovp.sh $(LIBEXEC_DIR)/set-ovp.sh
+	sudo install -D -m 0755 tools/ina226/clear-alert.sh $(LIBEXEC_DIR)/clear-alert.sh
+	sudo install -D -m 0755 tools/ina226/dump.sh $(LIBEXEC_DIR)/dump.sh
+	sudo install -D -m 0755 tools/capture/capture-image.sh $(PREFIX)/bin/beiis-capture-image
+	sudo install -D -m 0755 tools/capture/capture-video.sh $(PREFIX)/bin/beiis-capture-video
+	sudo install -D -m 0644 tools/capture/capture-common.sh $(LIBEXEC_DIR)/capture-common.sh
+	sudo install -D -m 0755 tools/gstreamer/preview.sh $(PREFIX)/bin/beiis-gst-preview
+	sudo install -D -m 0755 tools/gstreamer/record.sh $(PREFIX)/bin/beiis-gst-record
+	sudo install -D -m 0755 tools/raw/raw10-to-png.py $(PREFIX)/bin/beiis-raw10-to-png
+	sudo install -D -m 0644 systemd/be-iis-camera-init.service $(SYSTEMD_DIR)/be-iis-camera-init.service
 	sudo ln -sfn $(LIBEXEC_DIR)/init.sh $(PREFIX)/bin/beiis-camera-init
+	sudo ln -sfn $(LIBEXEC_DIR)/ina226-init-alerts.sh $(PREFIX)/bin/beiis-ina226-init-alerts
+	sudo ln -sfn $(LIBEXEC_DIR)/set-ocp.sh $(PREFIX)/bin/beiis-ina226-set-ocp
+	sudo ln -sfn $(LIBEXEC_DIR)/set-ovp.sh $(PREFIX)/bin/beiis-ina226-set-ovp
+	sudo ln -sfn $(LIBEXEC_DIR)/clear-alert.sh $(PREFIX)/bin/beiis-ina226-clear-alert
+	sudo ln -sfn $(LIBEXEC_DIR)/dump.sh $(PREFIX)/bin/beiis-ina226-dump
 
 configure:
 	sudo config/configure-boot.sh
