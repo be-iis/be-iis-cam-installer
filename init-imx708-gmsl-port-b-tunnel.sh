@@ -114,6 +114,9 @@ enable_camera_and_probe() {
 	sleep 0.1
 	write_reg "$SER_ADDR" 02ca 0x90
 
+	# Re-enable pipe 0 before accessing the remote camera I2C bus.
+	write_reg "$SER_ADDR" 0002 0x43
+
 	printf 'IMX708 ID/revision:      '
 	i2ctransfer -f -y "$I2C_BUS" "w2@${SENSOR_ADDR}" 0x00 0x16 r2
 }
