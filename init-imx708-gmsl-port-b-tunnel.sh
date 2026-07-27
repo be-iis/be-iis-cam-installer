@@ -96,12 +96,14 @@ enable_camera_and_probe() {
 	printf 'Configuring Link-B MAX96717 clock, power and reset\n'
 
 	# Same MAX96717 clock and CSI receiver baseline as the working Link-A path.
-	write_reg "$SER_ADDR" 0002 0x03
 	write_reg "$SER_ADDR" 056f 0x0e
 	write_reg "$SER_ADDR" 0003 0x07
 	write_reg "$SER_ADDR" 03f0 0x5a
 	write_reg "$SER_ADDR" 03f0 0x59
 	write_reg "$SER_ADDR" 0006 0xb0
+
+	# Enable pipe 0 before the camera power sequence; it gates remote I2C.
+	write_reg "$SER_ADDR" 0002 0x43
 
 	# Preserve the IMX708 I2C address through the MAX96717 tunnel.
 	write_reg "$SER_ADDR" 0042 0xa4
@@ -113,9 +115,6 @@ enable_camera_and_probe() {
 	write_reg "$SER_ADDR" 02c7 0x90
 	sleep 0.1
 	write_reg "$SER_ADDR" 02ca 0x90
-
-	# Re-enable pipe 0 before accessing the remote camera I2C bus.
-	write_reg "$SER_ADDR" 0002 0x43
 
 	printf 'IMX708 ID/revision:      '
 	i2ctransfer -f -y "$I2C_BUS" "w2@${SENSOR_ADDR}" 0x00 0x16 r2
