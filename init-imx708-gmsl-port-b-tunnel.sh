@@ -96,6 +96,13 @@ enable_camera_and_probe() {
 	printf 'Configuring Link-B MAX96717 clock, power and reset\n'
 
 	write_reg "$SER_ADDR" 056f 0x0e
+
+	# Preserve the IMX708 I2C address through the MAX96717 tunnel.
+	write_reg "$SER_ADDR" 0042 0xa4
+	write_reg "$SER_ADDR" 0043 0x34
+	write_reg "$SER_ADDR" 0044 0x00
+	write_reg "$SER_ADDR" 0045 0x00
+
 	write_reg "$SER_ADDR" 02ca 0x80
 	write_reg "$SER_ADDR" 02c7 0x90
 	sleep 0.1
