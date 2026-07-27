@@ -69,3 +69,29 @@ Install this overlay in `config.txt`:
 ```ini
 dtoverlay=max96716a-max96717-imx708-be-iis
 ```
+
+
+## Dual-link / second CSI-path test profile
+
+`profiles/max96716a-max96717-imx708-be-iis-dual-csi.json` is a separate
+bring-up profile for two camera assemblies. It leaves the known-good
+single-camera Link-A profile unchanged.
+
+| GMSL input | Deserializer PHY | Remote I2C alias pool |
+| --- | --- | --- |
+| Link A | PHY0 | `0x52`, `0x53` |
+| Link B | PHY1 | `0x54`, `0x55` |
+
+The separate pools avoid collisions between the identical remote addresses of
+the two MAX96717/IMX708 assemblies. Build the diagnostic overlay explicitly:
+
+```bash
+./build-install-overlay.sh \
+    --adi-linux-dir "$HOME/src/adi-linux" \
+    --profile profiles/max96716a-max96717-imx708-be-iis-dual-csi.json
+```
+
+This creates and installs
+`max96716a-max96717-imx708-be-iis-dual-csi.dtbo`; it does not overwrite the
+single-link DTBO. First verify the Link-B video node on its own, then enable
+and capture both paths in parallel.
