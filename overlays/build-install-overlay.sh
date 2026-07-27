@@ -181,6 +181,6 @@ printf 'Generated DTBO: %s\n' "$generated_dtbo"
 if "$install"; then
 	printf 'Installed DTBO: %s\n' "$install_path"
 	printf 'Add this line to %s:\n' "$config_file"
-	printf '  dtoverlay=%s\n' "$OVERLAY_NAME"
+	printf '  dtoverlay=%s\n' "$overlay_name"
 	printf 'Then reboot into the ADI GMSL kernel.\n'
 fi
