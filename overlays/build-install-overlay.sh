@@ -2,8 +2,8 @@
 set -Eeuo pipefail
 
 readonly SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
-readonly OVERLAY_NAME="max96716a-max96717-imx708-be-iis"
-readonly DEFAULT_PROFILE="${SCRIPT_DIR}/profiles/${OVERLAY_NAME}.json"
+readonly DEFAULT_OVERLAY_NAME="max96716a-max96717-imx708-be-iis"
+readonly DEFAULT_PROFILE="${SCRIPT_DIR}/profiles/${DEFAULT_OVERLAY_NAME}.json"
 readonly CAMERA_TEMPLATE="${SCRIPT_DIR}/templates/imx708-be-iis.dtsi.in"
 
 usage() {
@@ -111,8 +111,9 @@ grep -q 'maxim,max96716a' "$driver" ||
 mkdir -p "$output_dir"
 output_dir="$(cd -- "$output_dir" && pwd)"
 profile="$(cd -- "$(dirname -- "$profile")" && pwd)/$(basename -- "$profile")"
-generated_dts="${output_dir}/${OVERLAY_NAME}.dts"
-generated_dtbo="${output_dir}/${OVERLAY_NAME}.dtbo"
+overlay_name="$(basename -- "$profile" .json)"
+generated_dts="${output_dir}/${overlay_name}.dts"
+generated_dtbo="${output_dir}/${overlay_name}.dtbo"
 
 generator_work_dir="$(mktemp -d)"
 cleanup() {
@@ -170,7 +171,7 @@ if "$install"; then
 		die "Raspberry Pi overlay directory not found"
 	fi
 
-	install_path="${overlay_dir}/${OVERLAY_NAME}.dtbo"
+	install_path="${overlay_dir}/${overlay_name}.dtbo"
 	printf 'Installing %s\n' "$install_path"
 	sudo install -m 0644 "$generated_dtbo" "$install_path"
 fi
