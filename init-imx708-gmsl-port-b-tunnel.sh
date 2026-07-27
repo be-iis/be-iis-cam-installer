@@ -95,7 +95,13 @@ configure_link_b() {
 enable_camera_and_probe() {
 	printf 'Configuring Link-B MAX96717 clock, power and reset\n'
 
+	# Same MAX96717 clock and CSI receiver baseline as the working Link-A path.
+	write_reg "$SER_ADDR" 0002 0x03
 	write_reg "$SER_ADDR" 056f 0x0e
+	write_reg "$SER_ADDR" 0003 0x07
+	write_reg "$SER_ADDR" 03f0 0x5a
+	write_reg "$SER_ADDR" 03f0 0x59
+	write_reg "$SER_ADDR" 0006 0xb0
 
 	# Preserve the IMX708 I2C address through the MAX96717 tunnel.
 	write_reg "$SER_ADDR" 0042 0xa4
