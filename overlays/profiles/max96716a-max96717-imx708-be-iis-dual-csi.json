@@ -11,12 +11,12 @@
     "links": [
       {
         "name": "max96717", "phy_idx": 0,
-        "cameras": [{ "name": "imx708-be-iis-link-a", "reset_pin": 3, "xclr_pin": 4, "vcm_enabled": false }],
+        "cameras": [{ "name": "imx708-be-iis", "reset_pin": 3, "xclr_pin": 4, "vcm_enabled": false }],
         "pool_addrs": ["0x52", "0x53"]
       },
       {
         "name": "max96717", "phy_idx": 1,
-        "cameras": [{ "name": "imx708-be-iis-link-b", "reset_pin": 3, "xclr_pin": 4, "vcm_enabled": false }],
+        "cameras": [{ "name": "imx708-be-iis", "reset_pin": 3, "xclr_pin": 4, "vcm_enabled": false }],
         "pool_addrs": ["0x54", "0x55"]
       }
     ]
