@@ -8,7 +8,12 @@
 # It retains the proven Link-A serializer sequence and maps the MAX96716A
 # output-pipe registers from hardware pipe 1 / DPHY0 to pipe 2 / DPHY1.
 #
-# This is a bring-up script, not yet a production configuration.
+# Validated bring-up state (2026-07-28):
+# - IMX708 is detected on I2C-11 and CSI1.
+# - Sensor streaming, serializer PCLK detection and MAX96716A DPHY1 output
+#   packet counters are active.
+# - Raspberry Pi CSI1 still times out; investigate the DPHY1-to-CSI1 physical
+#   output path separately. This is not yet a production configuration.
 #
 # Usage:
 #   sudo ./init-imx708-gmsl-port-b-tunnel.sh init
