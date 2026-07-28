@@ -155,7 +155,8 @@ configure_deserializer()
 
 	# Same shared back-top / PHY baseline as Link A.
 	write_reg "$DES_ADDR" 0313 0x00
-	write_reg "$DES_ADDR" 0160 0x01
+	# Logical pipe 1 is selected for Link B in 0x0161; enable pipe 1.
+	write_reg "$DES_ADDR" 0160 0x02
 	write_reg "$DES_ADDR" 0161 0x20
 	write_reg "$DES_ADDR" 0308 0x01
 	write_reg "$DES_ADDR" 031d 0x2f
@@ -193,6 +194,8 @@ show_status()
 	log "Configuration status"
 	printf 'MAX96716A Link-B status: '
 	read_reg "$DES_ADDR" 5009 || true
+	printf 'MAX96716A pipe enable:   '
+	read_reg "$DES_ADDR" 0160 || true
 	printf 'MAX96716A pipe select:   '
 	read_reg "$DES_ADDR" 0161 || true
 	printf 'MAX96716A DPHY1 lanes:   '
