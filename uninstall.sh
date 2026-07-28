@@ -9,9 +9,31 @@ readonly SERVICE="be-iis-camera-init.service"
 readonly LIBEXEC_DIR="/usr/libexec/be-iis-camera"
 readonly PREFIX="/usr/local"
 
+remove_overlay()
+{
+	local overlay="$1"
+	local -a indices=()
+	local index
+
+	mapfile -t indices < <(
+		dtoverlay -l 2>/dev/null |
+			awk -v name="$overlay" '$0 ~ name { gsub(/:/, "", $1); print $1 }' |
+			sort -rn
+	)
+
+	for index in "${indices[@]}"; do
+		dtoverlay -r "$index" 2>/dev/null || true
+	done
+}
+
 systemctl disable --now "$SERVICE" 2>/dev/null || true
 rm -f -- "/etc/systemd/system/$SERVICE"
 rm -rf -- "$LIBEXEC_DIR"
+
+# Remove the profile overlays if they were loaded dynamically in this boot.
+remove_overlay 'imx708-gmsl-link-b-csi1'
+remove_overlay 'imx708-gmsl-link-b-csi0-port-map-test'
+remove_overlay '^.*imx708$'
 
 rm -f -- \
 	"$PREFIX/bin/beiis-camera-init" \
@@ -32,5 +54,5 @@ systemctl daemon-reload
 systemctl reset-failed "$SERVICE" 2>/dev/null || true
 
 printf '%s\n' \
-	"Removed BE-IIS camera userspace and disabled $SERVICE." \
-	"Left kernel modules, installed driver artifacts, and dtparam=i2c_arm=on unchanged."
+	"Removed BE-IIS camera userspace, Link-A/Link-B runtime overlays, and disabled $SERVICE." \
+	"The system I2C setting and the kernel IMX708 module are left unchanged."
