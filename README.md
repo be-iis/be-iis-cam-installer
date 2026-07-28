@@ -66,6 +66,35 @@ It **does not reboot**. Reboot explicitly when convenient:
 sudo reboot
 ```
 
+## Link-A and Link-B bring-up profiles
+
+The two direct GMSL bring-up profiles are deliberately mutually exclusive.
+They configure shared MAX96716A state and therefore must not be enabled
+concurrently or through a persistent service.
+
+From a clean boot, activate exactly one profile:
+
+```bash
+sudo ./install-link-a.sh   # known-good Link A / CSI0 path
+sudo ./install-link-b.sh   # Link B / CSI1 diagnostic profile
+```
+
+Equivalent Make targets are `make install-link-a` and `make install-link-b`.
+`install-link-b.sh` loads the IMX708-only overlay on I2C-11 and CSI1. The
+Link-B GMSL path is verified, but the board's DPHY1-to-CSI1 path is still a
+hardware investigation; do not treat this profile as a production install.
+
+To remove the legacy service, BE-IIS userspace files, and any currently loaded
+Link-A/Link-B runtime overlay:
+
+```bash
+sudo ./uninstall.sh
+```
+
+Reboot after switching profiles or uninstalling. The uninstaller deliberately
+does not remove the system-wide I2C setting or the installed IMX708 kernel
+module, because they may be used by other camera configurations.
+
 After reboot:
 
 ```bash
