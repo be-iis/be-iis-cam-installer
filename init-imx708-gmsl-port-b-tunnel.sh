@@ -185,13 +185,15 @@ configure_deserializer()
 	write_reg "$DES_ADDR" 0489 0x01
 	write_reg "$DES_ADDR" 048a 0x50
 
+	# DPHY1 uses its own DPLL control and reset registers.
+	write_reg "$DES_ADDR" 0323 0x29
+	write_reg "$DES_ADDR" 1e00 0xf4
+	sleep 0.02
+	write_reg "$DES_ADDR" 1e00 0xf5
+
 	# Link B arrives at MAX96716A hardware pipe 1 (0x021c video lock).
 	# 0x0474 routes this active pipe; bit 1 selects DPHY1.
 	write_reg "$DES_ADDR" 0474 0x0b
-
-	write_reg "$DES_ADDR" 1d00 0xf4
-	sleep 0.02
-	write_reg "$DES_ADDR" 1d00 0xf5
 	write_reg "$DES_ADDR" 0313 0x02
 }
 
