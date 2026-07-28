@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: GPL-2.0-only
+/*
+ * Temporary port-mapping test for BE-IIS GMSL2 Link B.
+ *
+ * IMX708 control I2C remains on i2c_csi_dsi1 (/dev/i2c-11).
+ * Only the video endpoint is moved to CSI0 to test whether MAX96716A
+ * DPHY1 is physically wired to the Pi CSI0 receiver.
+ */
+/dts-v1/;
+/plugin/;
+
+/ {
+	compatible = "brcm,bcm2835";
+
+	fragment@0 {
+		target = <&cam0_clk>;
+		__overlay__ {
+			status = "okay";
+			clock-frequency = <24000000>;
+		};
+	};
+
+	fragment@1 {
+		target = <&i2c_csi_dsi1>;
+		__overlay__ {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "okay";
+
+			gmsl_imx708_csi0: imx708@1a {
+				compatible = "sony,imx708";
+				reg = <0x1a>;
+				status = "okay";
+
+				clocks = <&cam0_clk>;
+				clock-names = "inclk";
+
+				vana1-supply = <&cam_dummy_reg>;
+				vana2-supply = <&cam_dummy_reg>;
+				vdig-supply = <&cam_dummy_reg>;
+				vddl-supply = <&cam_dummy_reg>;
+
+				rotation = <180>;
+				orientation = <2>;
+
+				port {
+					gmsl_imx708_csi0_endpoint: endpoint {
+						remote-endpoint = <&gmsl_csi0_endpoint>;
+						clock-lanes = <0>;
+						data-lanes = <1 2>;
+						clock-noncontinuous;
+						link-frequencies =
+							/bits/ 64 <450000000>;
+					};
+				};
+			};
+		};
+	};
+
+	fragment@2 {
+		target = <&csi0>;
+		__overlay__ {
+			status = "okay";
+			brcm,media-controller;
+
+			port {
+				gmsl_csi0_endpoint: endpoint {
+					remote-endpoint = <&gmsl_imx708_csi0_endpoint>;
+					clock-lanes = <0>;
+					data-lanes = <1 2>;
+					clock-noncontinuous;
+					link-frequencies =
+						/bits/ 64 <450000000>;
+				};
+			};
+		};
+	};
+};
