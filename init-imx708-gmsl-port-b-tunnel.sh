@@ -2,18 +2,20 @@
 #
 # Bring up:
 #   IMX708 -> MAX96717 -> GMSL2 Link B (6Gbit/s)
-#          -> MAX96716A DPHY1 -> Raspberry Pi 5 CSI1
+#          -> MAX96716A hardware pipe 1 -> DPHY1 -> Raspberry Pi 5 CSI1
 #
 # This is the Link-B counterpart to init-imx708-gmsl-port-a-tunnel.sh.
-# It retains the proven Link-A serializer sequence and maps the MAX96716A
-# output-pipe registers from hardware pipe 1 / DPHY0 to pipe 2 / DPHY1.
+# It retains the proven Link-A serializer sequence. Link B selects logical
+# pipe 1, which is received by MAX96716A hardware pipe 1 (not pipe 2).
 #
 # Validated bring-up state (2026-07-28):
 # - IMX708 is detected on I2C-11 and CSI1.
-# - Sensor streaming, serializer PCLK detection and MAX96716A DPHY1 output
-#   packet counters are active.
-# - Raspberry Pi CSI1 still times out; investigate the DPHY1-to-CSI1 physical
-#   output path separately. This is not yet a production configuration.
+# - Sensor streaming, serializer PCLK detection and MAX96716A hardware-pipe-1
+#   video lock are active.
+# - Link B was captured successfully through hardware pipe 1 / DPHY0 / CSI0.
+# - Raspberry Pi CSI1 still receives no frames when that same pipe is routed
+#   to DPHY1. Investigate the DPHY1-to-CSI1 hardware path separately.
+#   This is not yet a production configuration.
 #
 # Usage:
 #   sudo ./init-imx708-gmsl-port-b-tunnel.sh init
@@ -173,8 +175,7 @@ configure_deserializer()
 	write_reg "$DES_ADDR" 0335 0x00
 	write_reg "$DES_ADDR" 0336 0x00
 
-	# Link A uses the hardware-pipe-1 block 0x0440..0x044a.
-	# Link B / DPHY1 is the corresponding hardware-pipe-2 block.
+	# Configure DPHY1 for a two-lane output.
 	write_reg "$DES_ADDR" 0480 0x01
 	write_reg "$DES_ADDR" 0483 0x01
 	write_reg "$DES_ADDR" 0484 0x01
@@ -184,9 +185,9 @@ configure_deserializer()
 	write_reg "$DES_ADDR" 0489 0x01
 	write_reg "$DES_ADDR" 048a 0x50
 
-	# Tunnel: Link-A 0x0474=0x09 maps to Link-B 0x04b4.
-	# Bit 1 selects DPHY1, hence 0x0b instead of Link-A's 0x09.
-	write_reg "$DES_ADDR" 04b4 0x0b
+	# Link B arrives at MAX96716A hardware pipe 1 (0x021c video lock).
+	# 0x0474 routes this active pipe; bit 1 selects DPHY1.
+	write_reg "$DES_ADDR" 0474 0x0b
 
 	write_reg "$DES_ADDR" 1d00 0xf4
 	sleep 0.02
@@ -205,10 +206,10 @@ show_status()
 	read_reg "$DES_ADDR" 0161 || true
 	printf 'MAX96716A DPHY1 lanes:   '
 	read_reg "$DES_ADDR" 048a || true
-	printf 'MAX96716A tunnel route:  '
-	read_reg "$DES_ADDR" 04b4 || true
-	printf 'MAX96716A video lock:    '
-	read_reg "$DES_ADDR" 023c || true
+	printf 'MAX96716A Pipe1 route:   '
+	read_reg "$DES_ADDR" 0474 || true
+	printf 'MAX96716A Pipe1 lock:    '
+	read_reg "$DES_ADDR" 021c || true
 	printf 'MAX96716A CSI output:    '
 	read_reg "$DES_ADDR" 0313 || true
 	printf 'MAX96717 stream ID:      '
