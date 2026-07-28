@@ -57,19 +57,30 @@ An intermediate test using `0x005b = 0x02` and `0x0161 = 0x30` did not
 produce video lock. Those values are not part of the current procedure and
 were restored to `0x00` and `0x20`.
 
-## Current blocker
+## Confirmed routing and current blocker
 
-The pipeline is proven through the sensor input of the serializer, but not
-through the GMSL video output:
+Link B selects logical pipe 1 (`0x0160 = 0x02`, `0x0161 = 0x20`). The active
+MAX96716A input is therefore **hardware pipe 1**:
 
 | Observation | Value |
 |---|---:|
-| MAX96716A Link-B video lock, `0x023c` | `0x00` |
-| `rpicam-still` on CSI1 | RP1-CFE timeout; no frame received |
+| MAX96716A hardware-pipe-1 video lock, `0x021c` | `0x81` while streaming |
+| MAX96716A hardware-pipe-2 video lock, `0x023c` | `0x00` |
+| Active-pipe route to DPHY1, `0x0474` | `0x0b` |
 
-Thus the remaining fault is between MAX96717 video transmission and MAX96716A
-Link-B video reception/routing. It is not an IMX708 I2C, power/reset, sensor
-streaming, or CSI1 Device Tree enumeration problem.
+The former assumption that Link B used hardware pipe 2 / `0x04b4` was wrong.
+
+With pipe 1 routed to DPHY0 (`0x0474 = 0x09`) and the sensor endpoint on
+Raspberry Pi CSI0, a 2304x1296 image was captured successfully. This proves
+the IMX708, MAX96717, GMSL Link B, MAX96716A receive/routing and the active
+pipe configuration.
+
+With the same active pipe routed to DPHY1 (`0x0474 = 0x0b`) and the sensor
+endpoint on CSI1, the RP1-CFE is armed but sees no CSI frames or PHY
+interrupts. The remaining failure domain is the DPHY1-to-CSI1 hardware path
+(DPHY1 transmitter/output routing, FFC connector/cable, or the Pi CSI1
+receiver path). It is not an IMX708 I2C, power/reset, sensor streaming, GMSL
+link-lock, or Device Tree enumeration problem.
 
 No production Link-B init sequence is claimed yet. Further changes must be
 compared register-for-register against the working Link-A procedure before
