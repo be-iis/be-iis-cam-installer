@@ -163,6 +163,9 @@ configure_deserializer()
 	# Same shared back-top / PHY baseline as Link A.
 	write_reg "$DES_ADDR" 0313 0x00
 	# Logical pipe 1 is selected for Link B in 0x0161; enable pipe 1.
+	# 0x02 is required here. 0x01 enables pipe 0 and prevents capture,
+	# even though Link B, the serializer and the DeSer video-lock status
+	# otherwise look healthy.
 	write_reg "$DES_ADDR" 0160 0x02
 	write_reg "$DES_ADDR" 0161 0x20
 	write_reg "$DES_ADDR" 0308 0x01

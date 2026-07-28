@@ -84,6 +84,11 @@ Equivalent Make targets are `make install-link-a` and `make install-link-b`.
 Link-B GMSL path is verified, but the board's DPHY1-to-CSI1 path is still a
 hardware investigation; do not treat this profile as a production install.
 
+The verified Link-B input uses MAX96716A logical pipe 1: `0x0161 = 0x20` and
+`0x0160 = 0x02`. In particular, `0x0160 = 0x01` enables the wrong pipe and
+causes a capture timeout despite a valid Link-B lock and serializer pixel-clock
+detect.
+
 To remove the legacy service, BE-IIS userspace files, and any currently loaded
 Link-A/Link-B runtime overlay:
 
