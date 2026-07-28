@@ -171,7 +171,8 @@ configure_deserializer()
 	write_reg "$DES_ADDR" 0330 0x04
 	write_reg "$DES_ADDR" 0332 0xf4
 	write_reg "$DES_ADDR" 0333 0x4e
-	write_reg "$DES_ADDR" 0334 0xe4
+	# DPHY1 PCB routing swaps D0 and D1 relative to the MAX96716A default.
+	write_reg "$DES_ADDR" 0334 0xe1
 	write_reg "$DES_ADDR" 0335 0x00
 	write_reg "$DES_ADDR" 0336 0x00
 
