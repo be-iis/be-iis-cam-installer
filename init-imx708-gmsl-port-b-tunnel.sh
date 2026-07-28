@@ -1,82 +1,96 @@
 #!/usr/bin/env bash
 #
-# Prepare and validate:
-#   IMX708 -> MAX96717 -> GMSL2 Link B (6 Gbit/s)
+# Bring up:
+#   IMX708 -> MAX96717 -> GMSL2 Link B (6Gbit/s)
 #          -> MAX96716A DPHY1 -> Raspberry Pi 5 CSI1
 #
-# This script deliberately configures only the proven Link-B electrical and
-# remote-I2C bring-up. The ADI GMSL overlay configures the CSI/video topology.
+# This is the Link-B counterpart to init-imx708-gmsl-port-a-tunnel.sh.
+# It retains the proven Link-A serializer sequence and maps the MAX96716A
+# output-pipe registers from hardware pipe 1 / DPHY0 to pipe 2 / DPHY1.
+#
+# This is a bring-up script, not yet a production configuration.
 #
 # Usage:
-#   sudo ./init-imx708-gmsl-port-b-tunnel.sh [status]
+#   sudo ./init-imx708-gmsl-port-b-tunnel.sh init
+#   sudo ./init-imx708-gmsl-port-b-tunnel.sh status
 #
-# Expected successful result:
-#   Link-B status contains bit 3 (for example 0xc8)
-#   MAX96717 ID/revision: 0xbf 0x06
-#   IMX708 ID/revision:   0x07 0x08
+# Environment overrides:
+#   I2C_BUS=11 DES_ADDR=0x28 SER_ADDR=0x40 POT_ADDR=0x51 SENSOR_ADDR=0x1a
 
 set -Eeuo pipefail
 
-readonly I2C_BUS="${I2C_BUS:-11}"
-readonly DES_ADDR="${DES_ADDR:-0x28}"
-readonly SER_ADDR="${SER_ADDR:-0x40}"
-readonly POT_ADDR="${POT_ADDR:-0x51}"
-readonly SENSOR_ADDR="${SENSOR_ADDR:-0x1a}"
+I2C_BUS="${I2C_BUS:-11}"
+DES_ADDR="${DES_ADDR:-0x28}"
+SER_ADDR="${SER_ADDR:-0x40}"
+POT_ADDR="${POT_ADDR:-0x51}"
+SENSOR_ADDR="${SENSOR_ADDR:-0x1a}"
 
-die() {
+log()
+{
+	printf '\n==> %s\n' "$*"
+}
+
+die()
+{
 	printf 'ERROR: %s\n' "$*" >&2
 	exit 1
 }
 
-write_reg() {
+need_cmd()
+{
+	command -v "$1" >/dev/null 2>&1 ||
+		die "Required command not found: $1"
+}
+
+write_reg()
+{
 	local address="$1" reg="$2" value="$3"
 
-	i2ctransfer -f -y "$I2C_BUS" "w3@${address}" \
+	i2ctransfer -f -y "$I2C_BUS" \
+		"w3@${address}" \
 		"0x${reg:0:2}" "0x${reg:2:2}" "$value"
 }
 
-read_reg() {
+read_reg()
+{
 	local address="$1" reg="$2"
 
-	i2ctransfer -f -y "$I2C_BUS" "w2@${address}" \
+	i2ctransfer -f -y "$I2C_BUS" \
+		"w2@${address}" \
 		"0x${reg:0:2}" "0x${reg:2:2}" r1
 }
 
-read_id() {
-	local address="$1"
-
-	i2ctransfer -f -y "$I2C_BUS" "w2@${address}" 0x00 0x0d r2
+read_id()
+{
+	i2ctransfer -f -y "$I2C_BUS" "w2@$1" 0x00 0x0d r2
 }
 
-check_link_b_lock() {
-	local status status_value
-
-	status="$(read_reg "$DES_ADDR" 5009)"
-	status_value=$((status))
-
-	printf 'MAX96716A Link-B status: %s\n' "$status"
-	(( status_value & 0x08 )) ||
-		die "Link B is not locked (bit 3 in 0x5009 is clear)."
-
-	printf 'MAX96717 ID/revision:    '
-	read_id "$SER_ADDR"
+check_root()
+{
+	(( EUID == 0 )) || die "Run this script with sudo."
 }
 
-configure_link_b() {
+check_tools()
+{
+	need_cmd i2ctransfer
+	need_cmd modprobe
+}
+
+configure_link()
+{
 	local serializer_id="" attempt
 
+	log "Loading I2C support"
 	modprobe i2c-dev
 	[[ -e "/dev/i2c-${I2C_BUS}" ]] ||
 		die "/dev/i2c-${I2C_BUS} does not exist."
 
-	# TPL0102 channel A belongs to Link B. Channel B remains Link A.
+	log "Configuring DigiPot channel A for Link B"
 	i2ctransfer -f -y "$I2C_BUS" "w2@${POT_ADDR}" 0x00 0xae
 
-	# RX_RATE_B = 6 Gbit/s; CXTP_B = coax.
+	log "Configuring MAX96716A Link B for GMSL2 6Gbit/s over coax"
 	write_reg "$DES_ADDR" 0004 0x02
 	write_reg "$DES_ADDR" 0011 0x0f
-
-	# Reset and release only Link B.
 	write_reg "$DES_ADDR" 0013 0x01
 	sleep 0.1
 	write_reg "$DES_ADDR" 0013 0x00
@@ -87,25 +101,25 @@ configure_link_b() {
 		[[ "$serializer_id" == "0xbf 0x06" ]] && break
 	done
 
-	check_link_b_lock
+	printf 'MAX96716A Link-B status: '
+	read_reg "$DES_ADDR" 5009
+	printf 'MAX96717 ID/revision:    %s\n' "${serializer_id:-unavailable}"
 	[[ "$serializer_id" == "0xbf 0x06" ]] ||
 		die "MAX96717 on Link B did not become reachable."
 }
 
-enable_camera_and_probe() {
-	printf 'Configuring Link-B MAX96717 clock, power and reset\n'
+configure_serializer()
+{
+	log "Configuring MAX96717 clock, camera power/reset and CSI input"
 
-	# Same MAX96717 clock and CSI receiver baseline as the working Link-A path.
+	# Same ordering and values as the validated Link-A path.
+	write_reg "$SER_ADDR" 0002 0x03
 	write_reg "$SER_ADDR" 056f 0x0e
 	write_reg "$SER_ADDR" 0003 0x07
 	write_reg "$SER_ADDR" 03f0 0x5a
 	write_reg "$SER_ADDR" 03f0 0x59
 	write_reg "$SER_ADDR" 0006 0xb0
 
-	# Enable pipe 0 before the camera power sequence; it gates remote I2C.
-	write_reg "$SER_ADDR" 0002 0x43
-
-	# Preserve the IMX708 I2C address through the MAX96717 tunnel.
 	write_reg "$SER_ADDR" 0042 0xa4
 	write_reg "$SER_ADDR" 0043 0x34
 	write_reg "$SER_ADDR" 0044 0x00
@@ -116,20 +130,119 @@ enable_camera_and_probe() {
 	sleep 0.1
 	write_reg "$SER_ADDR" 02ca 0x90
 
+	write_reg "$SER_ADDR" 0308 0x64
+	write_reg "$SER_ADDR" 0311 0x40
+	write_reg "$SER_ADDR" 0330 0x40
+	write_reg "$SER_ADDR" 0331 0x10
+	write_reg "$SER_ADDR" 0332 0xe0
+	write_reg "$SER_ADDR" 0333 0x04
+	write_reg "$SER_ADDR" 0334 0x00
+	write_reg "$SER_ADDR" 0335 0x00
+	write_reg "$SER_ADDR" 0383 0x80
+
+	# MAX96717 hardware pipe 2, stream 0: retained from Link A.
+	write_reg "$SER_ADDR" 005b 0x00
+	write_reg "$SER_ADDR" 0002 0x43
+
 	printf 'IMX708 ID/revision:      '
-	i2ctransfer -f -y "$I2C_BUS" "w2@${SENSOR_ADDR}" 0x00 0x16 r2
+	i2ctransfer -f -y "$I2C_BUS" \
+		"w2@${SENSOR_ADDR}" 0x00 0x16 r2
 }
 
-main() {
-	(( EUID == 0 )) || die "Run this script with sudo."
-	command -v i2ctransfer >/dev/null || die "i2ctransfer is required."
+configure_deserializer()
+{
+	log "Configuring MAX96716A tunnel pipe and CSI Port B / DPHY1"
 
-	configure_link_b
-	enable_camera_and_probe
+	# Same shared back-top / PHY baseline as Link A.
+	write_reg "$DES_ADDR" 0313 0x00
+	write_reg "$DES_ADDR" 0160 0x01
+	write_reg "$DES_ADDR" 0161 0x20
+	write_reg "$DES_ADDR" 0308 0x01
+	write_reg "$DES_ADDR" 031d 0x2f
+	write_reg "$DES_ADDR" 0320 0x29
+	write_reg "$DES_ADDR" 0330 0x04
+	write_reg "$DES_ADDR" 0332 0xf4
+	write_reg "$DES_ADDR" 0333 0x4e
+	write_reg "$DES_ADDR" 0334 0xe4
+	write_reg "$DES_ADDR" 0335 0x00
+	write_reg "$DES_ADDR" 0336 0x00
 
-	printf '\nLink B and the remote IMX708 are ready.\n'
-	printf 'Use the dual-CSI overlay profile for CSI1:\n'
-	printf '  overlays/profiles/max96716a-max96717-imx708-be-iis-dual-csi.json\n'
+	# Link A uses the hardware-pipe-1 block 0x0440..0x044a.
+	# Link B / DPHY1 is the corresponding hardware-pipe-2 block.
+	write_reg "$DES_ADDR" 0480 0x01
+	write_reg "$DES_ADDR" 0483 0x01
+	write_reg "$DES_ADDR" 0484 0x01
+	write_reg "$DES_ADDR" 0485 0x71
+	write_reg "$DES_ADDR" 0486 0x19
+	write_reg "$DES_ADDR" 0487 0x1c
+	write_reg "$DES_ADDR" 0489 0x01
+	write_reg "$DES_ADDR" 048a 0x50
+
+	# Tunnel: Link-A 0x0474=0x09 maps to Link-B 0x04b4.
+	# Bit 1 selects DPHY1, hence 0x0b instead of Link-A's 0x09.
+	write_reg "$DES_ADDR" 04b4 0x0b
+
+	write_reg "$DES_ADDR" 1d00 0xf4
+	sleep 0.02
+	write_reg "$DES_ADDR" 1d00 0xf5
+	write_reg "$DES_ADDR" 0313 0x02
+}
+
+show_status()
+{
+	log "Configuration status"
+	printf 'MAX96716A Link-B status: '
+	read_reg "$DES_ADDR" 5009 || true
+	printf 'MAX96716A pipe select:   '
+	read_reg "$DES_ADDR" 0161 || true
+	printf 'MAX96716A DPHY1 lanes:   '
+	read_reg "$DES_ADDR" 048a || true
+	printf 'MAX96716A tunnel route:  '
+	read_reg "$DES_ADDR" 04b4 || true
+	printf 'MAX96716A video lock:    '
+	read_reg "$DES_ADDR" 023c || true
+	printf 'MAX96716A CSI output:    '
+	read_reg "$DES_ADDR" 0313 || true
+	printf 'MAX96717 stream ID:      '
+	read_reg "$SER_ADDR" 005b || true
+	printf 'MAX96717 PCLK detect:    '
+	read_reg "$SER_ADDR" 0112 || true
+	printf 'MAX96717 tunnel mode:    '
+	read_reg "$SER_ADDR" 0383 || true
+	printf 'IMX708 streaming:        '
+	read_reg "$SENSOR_ADDR" 0100 || true
+}
+
+initialize_all()
+{
+	configure_link
+	configure_serializer
+	configure_deserializer
+	show_status
+}
+
+main()
+{
+	local action="${1:-init}"
+
+	check_root
+	check_tools
+
+	case "$action" in
+		init)
+			initialize_all
+			;;
+		status)
+			modprobe i2c-dev
+			show_status
+			;;
+		-h|--help|help)
+			sed -n '2,16p' "$0"
+			;;
+		*)
+			die "Unknown action '$action'. Use init or status."
+			;;
+	esac
 }
 
 main "$@"
