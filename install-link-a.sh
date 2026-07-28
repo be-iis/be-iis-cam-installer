@@ -18,4 +18,4 @@ if dtoverlay -l 2>/dev/null | grep -q 'imx708-gmsl-link-b'; then
 	exit 1
 fi
 
-exec "$repo_dir/init-imx708-gmsl-port-a-tunnel.sh" init
+exec bash "$repo_dir/init-imx708-gmsl-port-a-tunnel.sh" init
