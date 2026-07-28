@@ -26,7 +26,7 @@ if dtoverlay -l 2>/dev/null | grep -qE '(^|[[:space:]])imx708([[:space:]]|$)|imx
 	exit 1
 fi
 
-"$repo_dir/init-imx708-gmsl-port-b-tunnel.sh" init
+bash "$repo_dir/init-imx708-gmsl-port-b-tunnel.sh" init
 
 mkdir -p "$overlay_dir/build"
 dtc -@ -H epapr -I dts -O dtb \
