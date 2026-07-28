@@ -6,7 +6,7 @@ LIBEXEC_DIR ?= /usr/libexec/be-iis-camera
 SYSTEMD_DIR ?= /etc/systemd/system
 
 .PHONY: prepare fetch patch build install-driver install-userspace \
-	configure enable-service install all status clean distclean
+	configure enable-service install uninstall all status clean distclean
 
 prepare fetch patch build clean distclean:
 	$(MAKE) -C drivers/imx708 $@
@@ -42,6 +42,9 @@ configure:
 enable-service: install-userspace
 	sudo systemctl daemon-reload
 	sudo systemctl enable be-iis-camera-init.service
+
+uninstall:
+	sudo bash ./uninstall.sh
 
 install: install-driver install-userspace configure enable-service
 	@echo
