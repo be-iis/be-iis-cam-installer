@@ -16,7 +16,7 @@
 #   sudo ./init-imx708-gmsl-port-a.sh all [/tmp/imx708-port-a.raw]
 #
 # Environment overrides:
-#   I2C_BUS=11 DES_ADDR=0x28 SER_ADDR=0x40 POT_ADDR=0x51
+#   I2C_BUS=11 DES_ADDR=0x28 SER_ADDR=0x40 POT_ADDR=0x51 POT_B=0xae
 #   SENSOR_ADDR=0x1a WIDTH=2304 HEIGHT=1296 EXPOSURE=1000 GAIN=500
 
 set -Eeuo pipefail
@@ -25,6 +25,7 @@ I2C_BUS="${I2C_BUS:-11}"
 DES_ADDR="${DES_ADDR:-0x28}"
 SER_ADDR="${SER_ADDR:-0x40}"
 POT_ADDR="${POT_ADDR:-0x51}"
+POT_B="${POT_B:-0xae}"
 SENSOR_ADDR="${SENSOR_ADDR:-0x1a}"
 
 WIDTH="${WIDTH:-2304}"
@@ -158,9 +159,9 @@ configure_link()
 	[[ -e "/dev/i2c-${I2C_BUS}" ]] ||
 		die "/dev/i2c-${I2C_BUS} does not exist."
 
-	log "Configuring DigiPot channel B for the known 6-Gbit coax setting"
+	log "Configuring DigiPot channel B for the 6-Gbit coax setting: ${POT_B}"
 	i2ctransfer -f -y "$I2C_BUS" \
-		"w2@${POT_ADDR}" 0x01 0xae
+		"w2@${POT_ADDR}" 0x01 "$POT_B"
 
 	log "Configuring MAX96716A Link A for GMSL2 6 Gbit/s over coax"
 	write_reg "$DES_ADDR" 0001 0x02
