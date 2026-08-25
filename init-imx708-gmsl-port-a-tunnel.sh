@@ -27,6 +27,8 @@ SER_ADDR="${SER_ADDR:-0x40}"
 POT_ADDR="${POT_ADDR:-0x51}"
 POT_B="${POT_B:-0xae}"
 SENSOR_ADDR="${SENSOR_ADDR:-0x1a}"
+SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+CAMERA_POWER_RESET="${CAMERA_POWER_RESET:-1}"
 
 WIDTH="${WIDTH:-2304}"
 HEIGHT="${HEIGHT:-1296}"
@@ -430,8 +432,16 @@ capture_raw()
 		die "RAW buffer has an unexpected size."
 }
 
+power_reset_camera()
+{
+	[[ "$CAMERA_POWER_RESET" == 1 ]] || return 0
+	log "Power-resetting Link-A camera through INA226 ALERT"
+	bash "${SCRIPT_DIR}/tools/ina226/power-reset-link-a.sh"
+}
+
 initialize_all()
 {
+	power_reset_camera
 	configure_link
 	configure_serializer
 	configure_deserializer
