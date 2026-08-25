@@ -7,10 +7,11 @@ ConditionPathExists=/dev/i2c-11
 Type=oneshot
 # Configure both PoC links for 400 mA OCP with automatic release before power-up.
 ExecStartPre=/usr/libexec/be-iis-camera/ina226-init-alerts.sh
-ExecStart=/usr/libexec/be-iis-camera/init.sh init
+Environment=CAMERA_POWER_RESET_SCRIPT=/usr/libexec/be-iis-camera/power-reset-link-a.sh
+ExecStart=/usr/libexec/be-iis-camera/init-link-a.sh init
 # Log voltage and current for both links after camera initialization.
 ExecStartPost=/usr/libexec/be-iis-camera/dump.sh both
-ExecReload=/usr/libexec/be-iis-camera/init.sh init
+ExecReload=/usr/libexec/be-iis-camera/init-link-a.sh init
 RemainAfterExit=yes
 TimeoutStartSec=30
 
