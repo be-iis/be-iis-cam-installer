@@ -15,8 +15,10 @@ install-driver:
 	$(MAKE) -C drivers/imx708 install
 
 install-userspace:
-	sudo install -D -m 0755 profiles/be-iis-2cam-imx708/init.sh $(LIBEXEC_DIR)/init.sh
+	sudo install -D -m 0755 init-imx708-gmsl-port-a-tunnel.sh $(LIBEXEC_DIR)/init-link-a.sh
 	sudo install -D -m 0644 tools/ina226/ina226-common.sh $(LIBEXEC_DIR)/ina226-common.sh
+	sudo install -D -m 0755 tools/ina226/power-reset-camera.sh $(LIBEXEC_DIR)/power-reset-camera.sh
+	sudo install -D -m 0755 tools/ina226/power-reset-link-a.sh $(LIBEXEC_DIR)/power-reset-link-a.sh
 	sudo install -D -m 0755 tools/ina226/init-alerts.sh $(LIBEXEC_DIR)/ina226-init-alerts.sh
 	sudo install -D -m 0755 tools/ina226/set-ocp.sh $(LIBEXEC_DIR)/set-ocp.sh
 	sudo install -D -m 0755 tools/ina226/set-ovp.sh $(LIBEXEC_DIR)/set-ovp.sh
@@ -29,7 +31,7 @@ install-userspace:
 	sudo install -D -m 0755 tools/gstreamer/record.sh $(PREFIX)/bin/beiis-gst-record
 	sudo install -D -m 0755 tools/raw/raw10-to-png.py $(PREFIX)/bin/beiis-raw10-to-png
 	sudo install -D -m 0644 systemd/be-iis-camera-init.service $(SYSTEMD_DIR)/be-iis-camera-init.service
-	sudo ln -sfn $(LIBEXEC_DIR)/init.sh $(PREFIX)/bin/beiis-camera-init
+	sudo ln -sfn $(LIBEXEC_DIR)/init-link-a.sh $(PREFIX)/bin/beiis-camera-init
 	sudo ln -sfn $(LIBEXEC_DIR)/ina226-init-alerts.sh $(PREFIX)/bin/beiis-ina226-init-alerts
 	sudo ln -sfn $(LIBEXEC_DIR)/set-ocp.sh $(PREFIX)/bin/beiis-ina226-set-ocp
 	sudo ln -sfn $(LIBEXEC_DIR)/set-ovp.sh $(PREFIX)/bin/beiis-ina226-set-ovp
