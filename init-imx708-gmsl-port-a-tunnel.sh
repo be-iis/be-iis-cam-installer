@@ -29,6 +29,7 @@ POT_B="${POT_B:-0xae}"
 SENSOR_ADDR="${SENSOR_ADDR:-0x1a}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CAMERA_POWER_RESET="${CAMERA_POWER_RESET:-1}"
+CAMERA_POWER_RESET_SCRIPT="${CAMERA_POWER_RESET_SCRIPT:-${SCRIPT_DIR}/tools/ina226/power-reset-link-a.sh}"
 
 WIDTH="${WIDTH:-2304}"
 HEIGHT="${HEIGHT:-1296}"
@@ -436,7 +437,7 @@ power_reset_camera()
 {
 	[[ "$CAMERA_POWER_RESET" == 1 ]] || return 0
 	log "Power-resetting Link-A camera through INA226 ALERT"
-	bash "${SCRIPT_DIR}/tools/ina226/power-reset-link-a.sh"
+	bash "$CAMERA_POWER_RESET_SCRIPT"
 }
 
 initialize_all()
