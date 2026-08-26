@@ -311,18 +311,19 @@ static int __init beiis_max96716a_i2c_init(void)
 	beiis_bridge->des = beiis_des;
 
 	/* Install both distinct serializer aliases before enabling both CC links. */
+	beiis_bridge->channel[BEIIS_LINK_A].link = BEIIS_LINK_A;
+	beiis_bridge->channel[BEIIS_LINK_A].alias = BEIIS_LINK_A_ALIAS;
+	beiis_bridge->channel[BEIIS_LINK_B].link = BEIIS_LINK_B;
+	beiis_bridge->channel[BEIIS_LINK_B].alias = BEIIS_LINK_B_ALIAS;
+
 	ret = beiis_program_alias(beiis_bridge,
 				  &beiis_bridge->channel[BEIIS_LINK_A]);
 	if (ret)
 		goto unregister_des;
-	beiis_bridge->channel[BEIIS_LINK_A].link = BEIIS_LINK_A;
-	beiis_bridge->channel[BEIIS_LINK_A].alias = BEIIS_LINK_A_ALIAS;
 	ret = beiis_program_alias(beiis_bridge,
 				  &beiis_bridge->channel[BEIIS_LINK_B]);
 	if (ret)
 		goto unregister_des;
-	beiis_bridge->channel[BEIIS_LINK_B].link = BEIIS_LINK_B;
-	beiis_bridge->channel[BEIIS_LINK_B].alias = BEIIS_LINK_B_ALIAS;
 
 	ret = beiis_enable_remote_control_channels(beiis_bridge);
 	if (ret)
