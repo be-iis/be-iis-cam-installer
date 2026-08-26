@@ -186,8 +186,16 @@ static int beiis_program_alias(struct beiis_max96716a_i2c *bridge,
 	if (ret)
 		return ret;
 
-	return beiis_write_reg(bridge, serializer_addr, MAX96717_I2C_DST,
-			       BEIIS_REMOTE_IMX708_ADDR << 1);
+	ret = beiis_write_reg(bridge, serializer_addr, MAX96717_I2C_DST,
+			      BEIIS_REMOTE_IMX708_ADDR << 1);
+	if (ret)
+		return ret;
+
+	/* Keep the second translation slot disabled, matching the manual scripts. */
+	ret = beiis_write_reg(bridge, serializer_addr, 0x0044, 0x00);
+	if (ret)
+		return ret;
+	return beiis_write_reg(bridge, serializer_addr, 0x0045, 0x00);
 }
 
 /*
