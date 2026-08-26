@@ -15,6 +15,7 @@ install-driver:
 	$(MAKE) -C drivers/imx708 install
 
 install-userspace:
+	sudo dtc -@ -H epapr -I dts -O dtb -o /boot/firmware/overlays/imx708-gmsl-link-a.dtbo overlays/imx708-gmsl-link-a.dts
 	sudo install -D -m 0755 init-imx708-gmsl-port-a-tunnel.sh $(LIBEXEC_DIR)/init-link-a.sh
 	sudo install -D -m 0644 tools/ina226/ina226-common.sh $(LIBEXEC_DIR)/ina226-common.sh
 	sudo install -D -m 0755 tools/ina226/power-reset-camera.sh $(LIBEXEC_DIR)/power-reset-camera.sh

@@ -17,7 +17,7 @@
 #
 # Environment overrides:
 #   I2C_BUS=11 DES_ADDR=0x28 SER_ADDR=0x40 POT_ADDR=0x51 POT_B=0xae
-#   SENSOR_ADDR=0x1a WIDTH=2304 HEIGHT=1296 EXPOSURE=1000 GAIN=500
+#   SENSOR_ADDR=0x52 WIDTH=2304 HEIGHT=1296 EXPOSURE=1000 GAIN=500
 
 set -Eeuo pipefail
 
@@ -26,7 +26,8 @@ DES_ADDR="${DES_ADDR:-0x28}"
 SER_ADDR="${SER_ADDR:-0x40}"
 POT_ADDR="${POT_ADDR:-0x51}"
 POT_B="${POT_B:-0xae}"
-SENSOR_ADDR="${SENSOR_ADDR:-0x1a}"
+SENSOR_ADDR="${SENSOR_ADDR:-0x52}"
+OVERLAY_NAME="${OVERLAY_NAME:-imx708-gmsl-link-a}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 CAMERA_POWER_RESET="${CAMERA_POWER_RESET:-1}"
 CAMERA_POWER_RESET_SCRIPT="${CAMERA_POWER_RESET_SCRIPT:-${SCRIPT_DIR}/tools/ina226/power-reset-link-a.sh}"
@@ -285,16 +286,20 @@ load_sensor()
 {
 	local attempt
 
-	log "Loading the standard IMX708 overlay"
+	local sensor_bus_id
 
-	if ! dtoverlay -l 2>/dev/null | grep -qE '(^|[[:space:]])imx708([[:space:]]|$)'; then
-		dtoverlay imx708
+	log "Loading the Link-A IMX708 alias overlay (${SENSOR_ADDR})"
+
+	if ! dtoverlay -l 2>/dev/null | grep -qF "$OVERLAY_NAME"; then
+		dtoverlay "$OVERLAY_NAME"
 	fi
 
+	sensor_bus_id="$(printf '%d-%04x' "$I2C_BUS" "$((SENSOR_ADDR))")"
+
 	# A previous failed probe may leave the device present but unbound.
-	if [[ -e "/sys/bus/i2c/devices/${I2C_BUS}-001a" &&
-	      ! -e "/sys/bus/i2c/devices/${I2C_BUS}-001a/driver" ]]; then
-		printf '%s\n' "${I2C_BUS}-001a" > /sys/bus/i2c/drivers_probe
+	if [[ -e "/sys/bus/i2c/devices/${sensor_bus_id}" &&
+	      ! -e "/sys/bus/i2c/devices/${sensor_bus_id}/driver" ]]; then
+		printf '%s\n' "$sensor_bus_id" > /sys/bus/i2c/drivers_probe
 	fi
 
 	for attempt in {1..50}; do
