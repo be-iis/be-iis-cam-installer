@@ -350,20 +350,20 @@ static int __init beiis_max96716a_i2c_init(void)
 	ret = beiis_program_alias(beiis_bridge,
 				  &beiis_bridge->channel[BEIIS_LINK_A]);
 	if (ret) {
-		dev_err(&beiis_des->dev, "Link-A alias setup failed: %d\\n", ret);
+		dev_err(&beiis_des->dev, "Link-A alias setup failed: %d\n", ret);
 		goto unregister_des;
 	}
 	ret = beiis_program_alias(beiis_bridge,
 				  &beiis_bridge->channel[BEIIS_LINK_B]);
 	if (ret) {
-		dev_err(&beiis_des->dev, "Link-B alias setup failed: %d\\n", ret);
+		dev_err(&beiis_des->dev, "Link-B alias setup failed: %d\n", ret);
 		goto unregister_des;
 	}
 
 	ret = beiis_enable_remote_control_channels(beiis_bridge);
 	if (ret) {
 		dev_err(&beiis_des->dev,
-			"enabling both reverse-control channels failed: %d\\n", ret);
+			"enabling both reverse-control channels failed: %d\n", ret);
 		goto unregister_des;
 	}
 
