@@ -22,6 +22,7 @@
 #include <linux/init.h>
 #include <linux/module.h>
 #include <linux/mutex.h>
+#include <linux/slab.h>
 
 #define BEIIS_LINK_A			0
 #define BEIIS_LINK_B			1
