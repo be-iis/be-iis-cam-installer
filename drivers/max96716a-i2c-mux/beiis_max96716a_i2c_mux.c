@@ -31,6 +31,8 @@
 #define BEIIS_REMOTE_IMX708_ADDR	0x1a
 #define BEIIS_LINK_A_ALIAS		0x54
 #define BEIIS_LINK_B_ALIAS		0x55
+#define BEIIS_PADDING_ADDR		0x51
+#define BEIIS_PADDING_VALUE		0xae
 
 /* MAX96716A registers used by the upstream MAX96716A driver. */
 #define MAX96716_REG1			0x0001
@@ -85,6 +87,20 @@ static int beiis_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs, int num
 	return ret < 0 ? ret : -EIO;
 }
 
+static int beiis_write_byte_reg(struct beiis_max96716a_i2c *bridge, u16 addr,
+				u8 reg, u8 value)
+{
+	u8 data[] = { reg, value };
+	struct i2c_msg msg = {
+		.addr = addr,
+		.flags = 0,
+		.len = sizeof(data),
+		.buf = data,
+	};
+
+	return beiis_xfer(bridge->des->adapter, &msg, 1);
+}
+
 static int beiis_write_reg(struct beiis_max96716a_i2c *bridge, u16 addr,
 			   u16 reg, u8 value)
 {
@@ -128,6 +144,12 @@ static int beiis_read_reg(struct beiis_max96716a_i2c *bridge, u16 reg, u8 *value
 static int beiis_select_link(struct beiis_max96716a_i2c *bridge, u32 link)
 {
 	int ret;
+
+	/* The known-good manual scripts set the fixed 2K padding first. */
+	ret = beiis_write_byte_reg(bridge, BEIIS_PADDING_ADDR,
+				   0x01, BEIIS_PADDING_VALUE);
+	if (ret)
+		return ret;
 
 	switch (link) {
 	case BEIIS_LINK_A:
@@ -319,16 +341,23 @@ static int __init beiis_max96716a_i2c_init(void)
 
 	ret = beiis_program_alias(beiis_bridge,
 				  &beiis_bridge->channel[BEIIS_LINK_A]);
-	if (ret)
+	if (ret) {
+		dev_err(&beiis_des->dev, "Link-A alias setup failed: %d\\n", ret);
 		goto unregister_des;
+	}
 	ret = beiis_program_alias(beiis_bridge,
 				  &beiis_bridge->channel[BEIIS_LINK_B]);
-	if (ret)
+	if (ret) {
+		dev_err(&beiis_des->dev, "Link-B alias setup failed: %d\\n", ret);
 		goto unregister_des;
+	}
 
 	ret = beiis_enable_remote_control_channels(beiis_bridge);
-	if (ret)
+	if (ret) {
+		dev_err(&beiis_des->dev,
+			"enabling both reverse-control channels failed: %d\\n", ret);
 		goto unregister_des;
+	}
 
 	ret = beiis_add_child_adapter(beiis_bridge, BEIIS_LINK_A,
 				      BEIIS_LINK_A_ALIAS);
