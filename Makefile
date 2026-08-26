@@ -6,7 +6,7 @@ LIBEXEC_DIR ?= /usr/libexec/be-iis-camera
 SYSTEMD_DIR ?= /etc/systemd/system
 
 .PHONY: prepare fetch patch build install-driver install-userspace \
-	configure enable-service install all status clean distclean
+	configure remove-service install all status clean distclean
 
 prepare fetch patch build clean distclean:
 	$(MAKE) -C drivers/imx708 $@
@@ -31,7 +31,6 @@ install-userspace:
 	sudo install -D -m 0755 tools/gstreamer/preview.sh $(PREFIX)/bin/beiis-gst-preview
 	sudo install -D -m 0755 tools/gstreamer/record.sh $(PREFIX)/bin/beiis-gst-record
 	sudo install -D -m 0755 tools/raw/raw10-to-png.py $(PREFIX)/bin/beiis-raw10-to-png
-	sudo install -D -m 0644 systemd/be-iis-camera-init.service $(SYSTEMD_DIR)/be-iis-camera-init.service
 	sudo ln -sfn $(LIBEXEC_DIR)/init-link-a.sh $(PREFIX)/bin/beiis-camera-init
 	sudo ln -sfn $(LIBEXEC_DIR)/ina226-init-alerts.sh $(PREFIX)/bin/beiis-ina226-init-alerts
 	sudo ln -sfn $(LIBEXEC_DIR)/set-ocp.sh $(PREFIX)/bin/beiis-ina226-set-ocp
@@ -42,17 +41,21 @@ install-userspace:
 configure:
 	sudo config/configure-boot.sh
 
-enable-service: install-userspace
+# Remove the automatic camera initialisation from this Pi.
+# The manual bring-up scripts remain available in the checkout.
+remove-service:
+	sudo systemctl disable --now be-iis-camera-init.service 2>/dev/null || true
+	sudo rm -f $(SYSTEMD_DIR)/be-iis-camera-init.service
 	sudo systemctl daemon-reload
-	sudo systemctl enable be-iis-camera-init.service
 
-install: install-driver install-userspace configure enable-service
+install: install-driver install-userspace configure
 	@echo
-	@echo "Installation complete. No reboot was performed."
-	@echo "Reboot explicitly, then inspect: systemctl status be-iis-camera-init.service"
+	@echo "Installation complete. Camera initialization is manual."
+	@echo "Use sudo bash tools/bringup-serdes-links.sh first."
 
 all: prepare fetch patch build install
 
 status:
 	$(MAKE) -C drivers/imx708 status
-	@systemctl status be-iis-camera-init.service --no-pager 2>/dev/null || true
+	@echo "Automatic camera initialization is intentionally disabled."
+
