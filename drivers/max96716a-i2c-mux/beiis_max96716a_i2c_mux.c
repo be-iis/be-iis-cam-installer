@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * BE-IIS dual-link I2C address translator.
+ * BE-IIS dual-link I2C router and address translator.
  *
  * The control-plane scripts configure the two physical GMSL links and the
  * MAX96717 translations:
@@ -9,8 +9,9 @@
  *   Link B: IMX708 0x1a is exposed upstream as alias 0x53
  *
  * This module deliberately does not configure the MAX96716A/MAX96717. It
- * only creates two Linux I2C child buses and translates the native IMX708
- * address on each child bus to its already configured serializer alias.
+ * creates two Linux I2C child buses. Before every transfer it selects the
+ * matching physical MAX96716A link, then translates native IMX708 address
+ * 0x1a to the already configured serializer alias.
  *
  * This is only the I2C control plane. It does not configure CSI, media,
  * overlays, camera drivers or video streaming.
@@ -26,6 +27,13 @@
 #define BEIIS_LINK_B			1
 #define BEIIS_NUM_LINKS			2
 #define BEIIS_REMOTE_IMX708_ADDR	0x1a
+#define BEIIS_DES_ADDR			0x28
+
+/*
+ * Link selection writes are the verified manual sequences from
+ * init-gmsl-link-a.sh and init-gmsl-link-b.sh.  The scripts must have
+ * configured serializer power/reset and aliases before this module is used.
+ */
 
 struct beiis_i2c_bridge;
 
@@ -56,6 +64,49 @@ MODULE_PARM_DESC(alias_b, "Link-B MAX96717 sensor alias (default: 0x53)");
 
 static struct beiis_i2c_bridge *beiis_bridge;
 
+/* Write one 16-bit MAX96716A register through the parent bus. */
+static int beiis_des_write(struct beiis_i2c_bridge *bridge, u16 reg, u8 value)
+{
+	u8 data[] = { reg >> 8, reg & 0xff, value };
+	struct i2c_msg msg = {
+		.addr = BEIIS_DES_ADDR,
+		.flags = 0,
+		.len = sizeof(data),
+		.buf = data,
+	};
+	int ret;
+
+	ret = i2c_transfer(bridge->parent, &msg, 1);
+	return ret == 1 ? 0 : (ret < 0 ? ret : -EIO);
+}
+
+/*
+ * The MAX96716A has one upstream reverse-I2C path.  It must be pointed at
+ * the requested physical GMSL link before the translated sensor transfer.
+ * The channel mutex keeps selection and the following transfer atomic with
+ * respect to the other child bus.
+ */
+static int beiis_select_link(struct beiis_i2c_channel *channel)
+{
+	struct beiis_i2c_bridge *bridge = channel->bridge;
+	int ret;
+
+	if (channel->link == BEIIS_LINK_A) {
+		ret = beiis_des_write(bridge, 0x0f00, 0x01);
+		if (ret)
+			return ret;
+		return beiis_des_write(bridge, 0x0010, 0x31);
+	}
+
+	ret = beiis_des_write(bridge, 0x0001, 0x02);
+	if (ret)
+		return ret;
+	ret = beiis_des_write(bridge, 0x0011, 0x0b);
+	if (ret)
+		return ret;
+	return beiis_des_write(bridge, 0x0010, 0x31);
+}
+
 static int beiis_child_master_xfer(struct i2c_adapter *adapter,
 				   struct i2c_msg *msgs, int num)
 {
@@ -76,6 +127,10 @@ static int beiis_child_master_xfer(struct i2c_adapter *adapter,
 	 * Rewrite every transfer to the unique MAX96717 alias on I2C-11.
 	 */
 	mutex_lock(&channel->xfer_lock);
+	ret = beiis_select_link(channel);
+	if (ret)
+		goto unlock;
+
 	for (i = 0; i < num; i++) {
 		original_addrs[i] = msgs[i].addr;
 		if (msgs[i].addr != BEIIS_REMOTE_IMX708_ADDR) {
@@ -90,6 +145,7 @@ static int beiis_child_master_xfer(struct i2c_adapter *adapter,
 restore:
 	while (i--)
 		msgs[i].addr = original_addrs[i];
+unlock:
 	mutex_unlock(&channel->xfer_lock);
 	kfree(original_addrs);
 
@@ -103,11 +159,19 @@ static s32 beiis_child_smbus_xfer(struct i2c_adapter *adapter, u16 addr,
 {
 	struct beiis_i2c_channel *channel = adapter->algo_data;
 
+	s32 ret;
+
 	if (addr != BEIIS_REMOTE_IMX708_ADDR)
 		return -ENXIO;
 
-	return i2c_smbus_xfer(channel->bridge->parent, channel->alias,
-			      flags, read_write, command, size, data);
+	mutex_lock(&channel->xfer_lock);
+	ret = beiis_select_link(channel);
+	if (!ret)
+		ret = i2c_smbus_xfer(channel->bridge->parent, channel->alias,
+				     flags, read_write, command, size, data);
+	mutex_unlock(&channel->xfer_lock);
+
+	return ret;
 }
 
 static u32 beiis_child_functionality(struct i2c_adapter *adapter)
@@ -204,6 +268,6 @@ static void __exit beiis_i2c_bridge_exit(void)
 module_init(beiis_i2c_bridge_init);
 module_exit(beiis_i2c_bridge_exit);
 
-MODULE_DESCRIPTION("BE-IIS dual-link I2C address translator");
+MODULE_DESCRIPTION("BE-IIS dual-link I2C router and address translator");
 MODULE_AUTHOR("BE-IIS");
 MODULE_LICENSE("GPL");
