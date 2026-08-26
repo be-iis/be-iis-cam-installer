@@ -163,5 +163,5 @@ See [Installation](docs/installation.md) and
 
 ## Current bring-up status
 
-- Link A uses the MAX96717 I2C alias `0x52` and is stable at 2304×1296 with padding value `0xba`.
+- Link A uses the MAX96717 I2C alias `0x52` and is validated at 2304×1296 with padding value `0xae`.
 - Link B is not connected during this validated Link-A configuration.
