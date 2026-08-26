@@ -16,7 +16,7 @@
 #   sudo ./init-imx708-gmsl-port-a.sh all [/tmp/imx708-port-a.raw]
 #
 # Environment overrides:
-#   I2C_BUS=11 DES_ADDR=0x28 SER_ADDR=0x40 POT_ADDR=0x51 POT_B=0xae
+#   I2C_BUS=11 DES_ADDR=0x28 SER_ADDR=0x40 POT_ADDR=0x51 POT_B=0xba
 #   SENSOR_ADDR=0x52 WIDTH=2304 HEIGHT=1296 EXPOSURE=1000 GAIN=500
 
 set -Eeuo pipefail
@@ -25,7 +25,7 @@ I2C_BUS="${I2C_BUS:-11}"
 DES_ADDR="${DES_ADDR:-0x28}"
 SER_ADDR="${SER_ADDR:-0x40}"
 POT_ADDR="${POT_ADDR:-0x51}"
-POT_B="${POT_B:-0xae}"
+POT_B="${POT_B:-0xba}"
 SENSOR_ADDR="${SENSOR_ADDR:-0x52}"
 OVERLAY_NAME="${OVERLAY_NAME:-imx708-gmsl-link-a}"
 SCRIPT_DIR="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
@@ -163,7 +163,7 @@ configure_link()
 	[[ -e "/dev/i2c-${I2C_BUS}" ]] ||
 		die "/dev/i2c-${I2C_BUS} does not exist."
 
-	log "Configuring DigiPot channel B for the 6-Gbit coax setting: ${POT_B}"
+	log "Configuring Link-A 2K padding value: ${POT_B}"
 	i2ctransfer -f -y "$I2C_BUS" \
 		"w2@${POT_ADDR}" 0x01 "$POT_B"
 
@@ -364,7 +364,7 @@ show_status()
 	[[ -n "$MEDIA_DEV" ]] || find_media_graph
 
 	log "Configuration status"
-	printf 'DigiPot B:              '
+	printf 'Link-A padding:        '
 	i2ctransfer -f -y "$I2C_BUS" "w1@${POT_ADDR}" 0x01 r1 || true
 	printf 'MAX96716A ID:           '
 	read_id "$DES_ADDR" || true
