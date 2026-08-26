@@ -126,7 +126,8 @@ find_media_graph()
 		fi
 	done
 
-	[[ -n "$MEDIA_DEV" ]] || return 1
+	[[ -n "$MEDIA_DEV" ]] ||
+		die "Could not find the RP1-CFE media graph containing IMX708."
 
 	for node in /sys/class/video4linux/v4l-subdev*; do
 		[[ -e "$node/name" ]] || continue
@@ -144,8 +145,10 @@ find_media_graph()
 		' <<<"$graph"
 	)"
 
-	[[ -n "$VIDEO_NODE" && -e "$VIDEO_NODE" ]] || return 1
-	[[ -n "$SENSOR_NODE" && -e "$SENSOR_NODE" ]] || return 1
+	[[ -n "$VIDEO_NODE" && -e "$VIDEO_NODE" ]] ||
+		die "Could not find the rp1-cfe-csi2-ch0 video node."
+	[[ -n "$SENSOR_NODE" && -e "$SENSOR_NODE" ]] ||
+		die "Could not find the IMX708 V4L2 subdevice."
 }
 
 configure_link()
@@ -303,17 +306,7 @@ load_sensor()
 		sleep 0.1
 	done
 
-	# The IMX708 subdevice becomes visible before RP1-CFE has completed
-	# its media graph and video-node registration. Wait for the full graph.
-	for attempt in {1..200}; do
-		if find_media_graph; then
-			break
-		fi
-		sleep 0.1
-	done
-
-	[[ -n "$VIDEO_NODE" ]] ||
-		die "Could not find the rp1-cfe-csi2-ch0 video node after waiting for RP1-CFE."
+	find_media_graph
 	printf 'Media graph:   %s\n' "$MEDIA_DEV"
 	printf 'RAW node:      %s\n' "$VIDEO_NODE"
 	printf 'Sensor subdev: %s\n' "$SENSOR_NODE"
