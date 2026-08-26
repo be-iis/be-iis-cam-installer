@@ -18,11 +18,27 @@
 #include <linux/i2c-atr.h>
 #include <linux/init.h>
 #include <linux/module.h>
+#include <linux/property.h>
 
 #define BEIIS_LINK_A			0
 #define BEIIS_LINK_B			1
 #define BEIIS_NUM_LINKS			2
 #define BEIIS_MAX_XLATES_PER_LINK	2
+
+/*
+ * I2C-ATR must receive an alias pool from the device fwnode. These aliases
+ * are local MAX96717 source addresses; 0x54..0x57 are unused on this HAT.
+ * They intentionally differ from the physical IMX708 address (0x1a).
+ */
+static const u32 beiis_alias_pool[] = { 0x54, 0x55, 0x56, 0x57 };
+static const struct property_entry beiis_atr_properties[] = {
+	PROPERTY_ENTRY_U32_ARRAY("i2c-alias-pool", beiis_alias_pool),
+	{ }
+};
+static const struct software_node beiis_atr_swnode = {
+	.name = "beiis-max96716a-atr",
+	.properties = beiis_atr_properties,
+};
 
 /* MAX96716A registers used by the upstream MAX96716A driver. */
 #define MAX96716_REG1			0x0001
@@ -223,6 +239,10 @@ static const struct i2c_atr_ops beiis_atr_ops = {
 static int __init beiis_max96716a_atr_init(void)
 {
 	struct beiis_max96716a_atr *atr;
+	struct i2c_board_info des_info = {
+		I2C_BOARD_INFO("beiis-max96716a-atr", des_addr),
+		.swnode = &beiis_atr_swnode,
+	};
 	int ret;
 
 	beiis_parent = i2c_get_adapter(parent_bus);
@@ -234,7 +254,11 @@ static int __init beiis_max96716a_atr_init(void)
 		goto put_adapter;
 	}
 
-	beiis_des = i2c_new_dummy_device(beiis_parent, des_addr);
+	/*
+	 * The software node supplies i2c-alias-pool to Linux I2C-ATR. A plain
+	 * i2c_new_dummy_device() has no fwnode and would make ATR refuse to load.
+	 */
+	beiis_des = i2c_new_client_device(beiis_parent, &des_info);
 	if (IS_ERR(beiis_des)) {
 		ret = PTR_ERR(beiis_des);
 		beiis_des = NULL;
