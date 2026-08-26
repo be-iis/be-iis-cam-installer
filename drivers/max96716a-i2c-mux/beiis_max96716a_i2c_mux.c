@@ -1,44 +1,35 @@
 // SPDX-License-Identifier: GPL-2.0-only
 /*
- * BE-IIS MAX96716A / MAX96717 I2C Address Translator.
+ * BE-IIS MAX96716A / MAX96717 dual-link I2C address translator.
  *
- * The two remote IMX708 sensors both use address 0x1a. A normal I2C mux
- * cannot make those equal addresses coexist on one upstream control channel.
+ * Both remote IMX708 sensors use physical address 0x1a. The Raspberry Pi
+ * kernel 6.12 shipped for this target has the I2C-ATR headers, but does not
+ * export the I2C-ATR core symbols to external modules. This module therefore
+ * implements the small, fixed mapping required by this HAT locally:
  *
- * This module uses the Linux I2C-ATR helper. It creates one child bus per
- * GMSL link. When a downstream I2C device is added, I2C-ATR allocates a
- * unique local alias. The attach callback programs that alias into the
- * corresponding MAX96717 address-translation slot.
+ *   child bus A, remote 0x1a -> MAX96717-A alias 0x54
+ *   child bus B, remote 0x1a -> MAX96717-B alias 0x55
  *
- * It is deliberately only a control-plane helper: no CSI, media graph,
- * overlay or video-pipe configuration is performed here.
+ * The MAX96716A reverse control channels remain enabled simultaneously. A
+ * unique alias makes the two sensors independently accessible even though
+ * they share their physical address.
+ *
+ * This is only the I2C control plane. It does not configure video, CSI,
+ * media entities, overlays, or camera drivers.
  */
 #include <linux/err.h>
 #include <linux/i2c.h>
-#include <linux/i2c-atr.h>
 #include <linux/init.h>
 #include <linux/module.h>
-#include <linux/property.h>
+#include <linux/mutex.h>
 
 #define BEIIS_LINK_A			0
 #define BEIIS_LINK_B			1
 #define BEIIS_NUM_LINKS			2
-#define BEIIS_MAX_XLATES_PER_LINK	2
 
-/*
- * I2C-ATR must receive an alias pool from the device fwnode. These aliases
- * are local MAX96717 source addresses; 0x54..0x57 are unused on this HAT.
- * They intentionally differ from the physical IMX708 address (0x1a).
- */
-static const u32 beiis_alias_pool[] = { 0x54, 0x55, 0x56, 0x57 };
-static const struct property_entry beiis_atr_properties[] = {
-	PROPERTY_ENTRY_U32_ARRAY("i2c-alias-pool", beiis_alias_pool),
-	{ }
-};
-static const struct software_node beiis_atr_swnode = {
-	.name = "beiis-max96716a-atr",
-	.properties = beiis_atr_properties,
-};
+#define BEIIS_REMOTE_IMX708_ADDR	0x1a
+#define BEIIS_LINK_A_ALIAS		0x54
+#define BEIIS_LINK_B_ALIAS		0x55
 
 /* MAX96716A registers used by the upstream MAX96716A driver. */
 #define MAX96716_REG1			0x0001
@@ -46,14 +37,23 @@ static const struct software_node beiis_atr_swnode = {
 #define MAX96716_REG3			0x0003
 #define MAX96716_REG3_DIS_REM_CC_B	BIT(2)
 
-/* MAX96717 address-translation register pairs. */
-#define MAX96717_I2C_SRC(slot)		(0x0042 + (slot) * 2)
-#define MAX96717_I2C_DST(slot)		(0x0043 + (slot) * 2)
+/* MAX96717 address-translation register pair, slot 0. */
+#define MAX96717_I2C_SRC		0x0042
+#define MAX96717_I2C_DST		0x0043
 
-struct beiis_max96716a_atr {
+struct beiis_max96716a_i2c;
+
+struct beiis_i2c_channel {
+	struct i2c_adapter adap;
+	struct beiis_max96716a_i2c *bridge;
+	u8 alias;
+	u32 link;
+	struct mutex xfer_lock;
+};
+
+struct beiis_max96716a_i2c {
 	struct i2c_client *des;
-	struct i2c_atr *atr;
-	unsigned int xlate_slots[BEIIS_NUM_LINKS];
+	struct beiis_i2c_channel channel[BEIIS_NUM_LINKS];
 };
 
 static int parent_bus = 11;
@@ -71,7 +71,7 @@ MODULE_PARM_DESC(serializer_addr,
 
 static struct i2c_adapter *beiis_parent;
 static struct i2c_client *beiis_des;
-static struct i2c_atr *beiis_atr;
+static struct beiis_max96716a_i2c *beiis_bridge;
 
 static int beiis_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs, int num)
 {
@@ -84,7 +84,7 @@ static int beiis_xfer(struct i2c_adapter *adapter, struct i2c_msg *msgs, int num
 	return ret < 0 ? ret : -EIO;
 }
 
-static int beiis_write_reg(struct beiis_max96716a_atr *atr, u16 addr,
+static int beiis_write_reg(struct beiis_max96716a_i2c *bridge, u16 addr,
 			   u16 reg, u8 value)
 {
 	u8 data[] = { reg >> 8, reg & 0xff, value };
@@ -95,154 +95,195 @@ static int beiis_write_reg(struct beiis_max96716a_atr *atr, u16 addr,
 		.buf = data,
 	};
 
-	return beiis_xfer(atr->des->adapter, &msg, 1);
+	return beiis_xfer(bridge->des->adapter, &msg, 1);
 }
 
-static int beiis_read_reg(struct beiis_max96716a_atr *atr, u16 reg, u8 *value)
+static int beiis_read_reg(struct beiis_max96716a_i2c *bridge, u16 reg, u8 *value)
 {
 	u8 address[] = { reg >> 8, reg & 0xff };
 	struct i2c_msg msgs[] = {
 		{
-			.addr = atr->des->addr,
+			.addr = bridge->des->addr,
 			.flags = 0,
 			.len = sizeof(address),
 			.buf = address,
 		},
 		{
-			.addr = atr->des->addr,
+			.addr = bridge->des->addr,
 			.flags = I2C_M_RD,
 			.len = 1,
 			.buf = value,
 		},
 	};
 
-	return beiis_xfer(atr->des->adapter, msgs, ARRAY_SIZE(msgs));
+	return beiis_xfer(bridge->des->adapter, msgs, ARRAY_SIZE(msgs));
 }
 
 /*
  * These sequences are the manually verified way to reach the still-default
  * serializer address 0x40 on this BE-IIS board. They are used only while
- * installing a translation in one serializer.
+ * programming one serializer's private translation slot.
  */
-static int beiis_select_link(struct beiis_max96716a_atr *atr, u32 chan)
+static int beiis_select_link(struct beiis_max96716a_i2c *bridge, u32 link)
 {
 	int ret;
 
-	switch (chan) {
+	switch (link) {
 	case BEIIS_LINK_A:
-		ret = beiis_write_reg(atr, atr->des->addr, 0x0f00, 0x01);
+		ret = beiis_write_reg(bridge, bridge->des->addr, 0x0f00, 0x01);
 		if (ret)
 			return ret;
-		return beiis_write_reg(atr, atr->des->addr, 0x0010, 0x31);
+		return beiis_write_reg(bridge, bridge->des->addr, 0x0010, 0x31);
 
 	case BEIIS_LINK_B:
-		ret = beiis_write_reg(atr, atr->des->addr, 0x0001, 0x02);
+		ret = beiis_write_reg(bridge, bridge->des->addr, 0x0001, 0x02);
 		if (ret)
 			return ret;
-		ret = beiis_write_reg(atr, atr->des->addr, 0x0011, 0x0b);
+		ret = beiis_write_reg(bridge, bridge->des->addr, 0x0011, 0x0b);
 		if (ret)
 			return ret;
-		return beiis_write_reg(atr, atr->des->addr, 0x0010, 0x31);
+		return beiis_write_reg(bridge, bridge->des->addr, 0x0010, 0x31);
 
 	default:
 		return -EINVAL;
 	}
 }
 
+static int beiis_program_alias(struct beiis_max96716a_i2c *bridge,
+			       struct beiis_i2c_channel *channel)
+{
+	int ret;
+
+	ret = beiis_select_link(bridge, channel->link);
+	if (ret)
+		return ret;
+
+	ret = beiis_write_reg(bridge, serializer_addr, MAX96717_I2C_SRC,
+			      channel->alias << 1);
+	if (ret)
+		return ret;
+
+	return beiis_write_reg(bridge, serializer_addr, MAX96717_I2C_DST,
+			       BEIIS_REMOTE_IMX708_ADDR << 1);
+}
+
 /*
- * The upstream MAX96716A driver keeps both remote control channels enabled.
- * Unique aliases make broadcasts harmless: only the serializer whose source
- * alias matches forwards the transaction to its local peripheral.
+ * The reference MAX96716A driver enables both remote control channels. With
+ * different serializer aliases, a transaction is forwarded only through its
+ * matching link.
  */
-static int beiis_enable_remote_control_channels(struct beiis_max96716a_atr *atr)
+static int beiis_enable_remote_control_channels(struct beiis_max96716a_i2c *bridge)
 {
 	u8 value;
 	int ret;
 
-	ret = beiis_read_reg(atr, MAX96716_REG1, &value);
+	ret = beiis_read_reg(bridge, MAX96716_REG1, &value);
 	if (ret)
 		return ret;
-	ret = beiis_write_reg(atr, atr->des->addr, MAX96716_REG1,
+	ret = beiis_write_reg(bridge, bridge->des->addr, MAX96716_REG1,
 			      value & ~MAX96716_REG1_DIS_REM_CC_A);
 	if (ret)
 		return ret;
 
-	ret = beiis_read_reg(atr, MAX96716_REG3, &value);
+	ret = beiis_read_reg(bridge, MAX96716_REG3, &value);
 	if (ret)
 		return ret;
-	return beiis_write_reg(atr, atr->des->addr, MAX96716_REG3,
+	return beiis_write_reg(bridge, bridge->des->addr, MAX96716_REG3,
 			       value & ~MAX96716_REG3_DIS_REM_CC_B);
 }
 
-static int beiis_atr_attach_client(struct i2c_atr *i2c_atr, u32 chan,
-				   const struct i2c_client *client, u16 alias)
+static int beiis_child_master_xfer(struct i2c_adapter *adapter,
+				   struct i2c_msg *msgs, int num)
 {
-	struct beiis_max96716a_atr *atr = i2c_atr_get_driver_data(i2c_atr);
-	unsigned int slot;
+	struct beiis_i2c_channel *channel = adapter->algo_data;
+	u16 *original_addrs;
 	int ret;
+	int i;
 
-	if (chan >= BEIIS_NUM_LINKS || client->addr > 0x7f)
+	if (num <= 0)
 		return -EINVAL;
 
-	slot = atr->xlate_slots[chan];
-	if (slot >= BEIIS_MAX_XLATES_PER_LINK) {
-		dev_err(&atr->des->dev,
-			"Link %u has no free MAX96717 translation slot for 0x%02x\n",
-			chan, client->addr);
-		return -ENOSPC;
+	original_addrs = kmalloc_array(num, sizeof(*original_addrs), GFP_KERNEL);
+	if (!original_addrs)
+		return -ENOMEM;
+
+	/*
+	 * The child buses intentionally expose the physical sensor address.
+	 * Translate every message atomically before it reaches I2C-11.
+	 */
+	mutex_lock(&channel->xfer_lock);
+	for (i = 0; i < num; i++) {
+		original_addrs[i] = msgs[i].addr;
+		if (msgs[i].addr != BEIIS_REMOTE_IMX708_ADDR) {
+			ret = -ENXIO;
+			goto restore;
+		}
+		msgs[i].addr = channel->alias;
 	}
 
-	/*
-	 * The two serializers share their power-up address. Select the physical
-	 * link before configuring its private translation slot.
-	 */
-	ret = beiis_select_link(atr, chan);
-	if (ret)
-		return ret;
+	ret = i2c_transfer(channel->bridge->des->adapter, msgs, num);
 
-	ret = beiis_write_reg(atr, serializer_addr, MAX96717_I2C_SRC(slot),
-			      alias << 1);
-	if (ret)
-		return ret;
+restore:
+	while (i--)
+		msgs[i].addr = original_addrs[i];
+	mutex_unlock(&channel->xfer_lock);
+	kfree(original_addrs);
 
-	ret = beiis_write_reg(atr, serializer_addr, MAX96717_I2C_DST(slot),
-			      client->addr << 1);
-	if (ret)
-		return ret;
-
-	atr->xlate_slots[chan]++;
-
-	ret = beiis_enable_remote_control_channels(atr);
-	if (ret)
-		return ret;
-
-	dev_info(&atr->des->dev,
-		 "Link %c: remote 0x%02x is reachable as ATR alias 0x%02x\n",
-		 chan == BEIIS_LINK_A ? 'A' : 'B', client->addr, alias);
-	return 0;
+	return ret;
 }
 
-static void beiis_atr_detach_client(struct i2c_atr *i2c_atr, u32 chan,
-				    const struct i2c_client *client)
+static s32 beiis_child_smbus_xfer(struct i2c_adapter *adapter, u16 addr,
+				  unsigned short flags, char read_write,
+				  u8 command, int size,
+				  union i2c_smbus_data *data)
 {
-	/*
-	 * Keep the MAX96717 mapping intact. The remote camera can remain powered
-	 * while a Linux client is rebound, and the alias may be reused later.
-	 */
+	struct beiis_i2c_channel *channel = adapter->algo_data;
+
+	if (addr != BEIIS_REMOTE_IMX708_ADDR)
+		return -ENXIO;
+
+	return i2c_smbus_xfer(channel->bridge->des->adapter, channel->alias,
+			      flags, read_write, command, size, data);
 }
 
-static const struct i2c_atr_ops beiis_atr_ops = {
-	.attach_client = beiis_atr_attach_client,
-	.detach_client = beiis_atr_detach_client,
+static u32 beiis_child_functionality(struct i2c_adapter *adapter)
+{
+	struct beiis_i2c_channel *channel = adapter->algo_data;
+
+	return i2c_get_functionality(channel->bridge->des->adapter);
+}
+
+static const struct i2c_algorithm beiis_child_algorithm = {
+	.master_xfer = beiis_child_master_xfer,
+	.smbus_xfer = beiis_child_smbus_xfer,
+	.functionality = beiis_child_functionality,
 };
 
-static int __init beiis_max96716a_atr_init(void)
+static int beiis_add_child_adapter(struct beiis_max96716a_i2c *bridge, u32 link,
+				   u8 alias)
 {
-	struct beiis_max96716a_atr *atr;
-	struct i2c_board_info des_info = {
-		I2C_BOARD_INFO("beiis-max96716a-atr", des_addr),
-		.swnode = &beiis_atr_swnode,
-	};
+	struct beiis_i2c_channel *channel = &bridge->channel[link];
+
+	channel->bridge = bridge;
+	channel->alias = alias;
+	channel->link = link;
+	mutex_init(&channel->xfer_lock);
+
+	snprintf(channel->adap.name, sizeof(channel->adap.name),
+		 "BE-IIS GMSL Link %c", link == BEIIS_LINK_A ? 'A' : 'B');
+	channel->adap.owner = THIS_MODULE;
+	channel->adap.algo = &beiis_child_algorithm;
+	channel->adap.algo_data = channel;
+	channel->adap.dev.parent = &bridge->des->dev;
+	channel->adap.retries = bridge->des->adapter->retries;
+	channel->adap.timeout = bridge->des->adapter->timeout;
+	channel->adap.quirks = bridge->des->adapter->quirks;
+
+	return i2c_add_adapter(&channel->adap);
+}
+
+static int __init beiis_max96716a_i2c_init(void)
+{
 	int ret;
 
 	beiis_parent = i2c_get_adapter(parent_bus);
@@ -254,51 +295,55 @@ static int __init beiis_max96716a_atr_init(void)
 		goto put_adapter;
 	}
 
-	/*
-	 * The software node supplies i2c-alias-pool to Linux I2C-ATR. A plain
-	 * i2c_new_dummy_device() has no fwnode and would make ATR refuse to load.
-	 */
-	beiis_des = i2c_new_client_device(beiis_parent, &des_info);
+	beiis_des = i2c_new_dummy_device(beiis_parent, des_addr);
 	if (IS_ERR(beiis_des)) {
 		ret = PTR_ERR(beiis_des);
 		beiis_des = NULL;
 		goto put_adapter;
 	}
 
-	atr = devm_kzalloc(&beiis_des->dev, sizeof(*atr), GFP_KERNEL);
-	if (!atr) {
+	beiis_bridge = devm_kzalloc(&beiis_des->dev, sizeof(*beiis_bridge),
+				    GFP_KERNEL);
+	if (!beiis_bridge) {
 		ret = -ENOMEM;
 		goto unregister_des;
 	}
+	beiis_bridge->des = beiis_des;
 
-	atr->des = beiis_des;
-	beiis_atr = i2c_atr_new(beiis_parent, &beiis_des->dev,
-				&beiis_atr_ops, BEIIS_NUM_LINKS);
-	if (IS_ERR(beiis_atr)) {
-		ret = PTR_ERR(beiis_atr);
-		beiis_atr = NULL;
-		goto unregister_des;
-	}
-
-	i2c_atr_set_driver_data(beiis_atr, atr);
-
-	ret = i2c_atr_add_adapter(beiis_atr, BEIIS_LINK_A, NULL, NULL);
+	/* Install both distinct serializer aliases before enabling both CC links. */
+	ret = beiis_program_alias(beiis_bridge,
+				  &beiis_bridge->channel[BEIIS_LINK_A]);
 	if (ret)
-		goto delete_atr;
+		goto unregister_des;
+	beiis_bridge->channel[BEIIS_LINK_A].link = BEIIS_LINK_A;
+	beiis_bridge->channel[BEIIS_LINK_A].alias = BEIIS_LINK_A_ALIAS;
+	ret = beiis_program_alias(beiis_bridge,
+				  &beiis_bridge->channel[BEIIS_LINK_B]);
+	if (ret)
+		goto unregister_des;
+	beiis_bridge->channel[BEIIS_LINK_B].link = BEIIS_LINK_B;
+	beiis_bridge->channel[BEIIS_LINK_B].alias = BEIIS_LINK_B_ALIAS;
 
-	ret = i2c_atr_add_adapter(beiis_atr, BEIIS_LINK_B, NULL, NULL);
+	ret = beiis_enable_remote_control_channels(beiis_bridge);
+	if (ret)
+		goto unregister_des;
+
+	ret = beiis_add_child_adapter(beiis_bridge, BEIIS_LINK_A,
+				      BEIIS_LINK_A_ALIAS);
+	if (ret)
+		goto unregister_des;
+
+	ret = beiis_add_child_adapter(beiis_bridge, BEIIS_LINK_B,
+				      BEIIS_LINK_B_ALIAS);
 	if (ret)
 		goto del_link_a;
 
 	dev_info(&beiis_des->dev,
-		 "BE-IIS I2C-ATR ready: add downstream clients at native addresses\n");
+		 "BE-IIS aliases ready: Link A 0x1a->0x54, Link B 0x1a->0x55\n");
 	return 0;
 
 del_link_a:
-	i2c_atr_del_adapter(beiis_atr, BEIIS_LINK_A);
-delete_atr:
-	i2c_atr_delete(beiis_atr);
-	beiis_atr = NULL;
+	i2c_del_adapter(&beiis_bridge->channel[BEIIS_LINK_A].adap);
 unregister_des:
 	i2c_unregister_device(beiis_des);
 	beiis_des = NULL;
@@ -308,19 +353,17 @@ put_adapter:
 	return ret;
 }
 
-static void __exit beiis_max96716a_atr_exit(void)
+static void __exit beiis_max96716a_i2c_exit(void)
 {
-	i2c_atr_del_adapter(beiis_atr, BEIIS_LINK_B);
-	i2c_atr_del_adapter(beiis_atr, BEIIS_LINK_A);
-	i2c_atr_delete(beiis_atr);
+	i2c_del_adapter(&beiis_bridge->channel[BEIIS_LINK_B].adap);
+	i2c_del_adapter(&beiis_bridge->channel[BEIIS_LINK_A].adap);
 	i2c_unregister_device(beiis_des);
 	i2c_put_adapter(beiis_parent);
 }
 
-module_init(beiis_max96716a_atr_init);
-module_exit(beiis_max96716a_atr_exit);
+module_init(beiis_max96716a_i2c_init);
+module_exit(beiis_max96716a_i2c_exit);
 
-MODULE_DESCRIPTION("BE-IIS MAX96716A dual-link I2C Address Translator");
+MODULE_DESCRIPTION("BE-IIS MAX96716A dual-link I2C address translator");
 MODULE_AUTHOR("BE-IIS");
 MODULE_LICENSE("GPL");
-MODULE_IMPORT_NS("I2C_ATR");
