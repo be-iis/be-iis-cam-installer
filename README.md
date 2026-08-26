@@ -160,3 +160,8 @@ tools/raw/                      packed RAW10 conversion
 
 See [Installation](docs/installation.md) and
 [Troubleshooting](docs/troubleshooting.md) for details.
+
+## Current bring-up status
+
+- Link A uses the MAX96717 I2C alias `0x52` and is stable at 2304×1296 with padding value `0xba`.
+- Link B is not connected during this validated Link-A configuration.
