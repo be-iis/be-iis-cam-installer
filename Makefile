@@ -1,14 +1,14 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := all-a
 
-.PHONY: driver i2c-mux-driver init-a init-b init-a-b a overlays-a-b cameras-a-b unoverlay remove-service all-a all status clean
+.PHONY: driver i2c-mux-driver init-a init-b init-a-b a a-b overlays-a-b cameras-a-b unoverlay remove-service all-a all status clean
 
 # Build and install the patched IMX708 module. No camera configuration happens here.
 driver:
 	sudo bash tools/build-imx708-driver.sh
 
-# Build and install only the MAX96716A I2C mux module.
-# It creates virtual I2C buses for Link A and Link B; it is not a media driver.
+# Build and install only the experimental MAX96716A I2C mux module.
+# It creates virtual I2C buses; it is not a media driver and is not needed below.
 i2c-mux-driver:
 	$(MAKE) -C drivers/max96716a-i2c-mux install
 
@@ -20,14 +20,18 @@ init-a:
 init-b:
 	sudo bash tools/init-gmsl-link-b.sh
 
-# ADI-derived dual-link control-plane bring-up for sensor and focus aliases.
+# Dual-link I2C control plane: sensor and focus aliases, no video pipeline.
 init-a-b:
 	sudo bash tools/init-gmsl-links-a-b.sh
 
-# Verified Link-A video sequence after the dual I2C setup.
-# It configures Link A only; Link B remains I2C-only.
+# Video for Link A only. This intentionally enables Pipe Y only.
 a:
 	sudo bash tools/bringup-gmsl-link-a.sh
+
+# Verified dual-video configuration: A -> CSI1, B -> CSI0.
+# Prerequisite: make cameras-a-b
+a-b:
+	sudo bash tools/bringup-gmsl-links-a-b.sh
 
 # Compile and load two IMX708 overlays: Link A -> CSI1, Link B -> CSI0.
 overlays-a-b:
