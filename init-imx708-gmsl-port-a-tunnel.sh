@@ -173,6 +173,9 @@ silence_link_b_video()
 	else
 		printf 'MAX96717 Link-B: unavailable; continuing with Link A only\n'
 	fi
+
+	# Restore reverse-I2C selection before configuring Link A.
+	write_reg "$DES_ADDR" 0004 0x01
 }
 
 configure_link()
