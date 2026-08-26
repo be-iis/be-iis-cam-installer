@@ -33,25 +33,6 @@ read_id() {
 	i2ctransfer -f -y "$I2C_BUS" "w2@${address}" \
 		"0x${reg:0:2}" "0x${reg:2:2}" r2
 }
-
-read_byte() {
-	local address="$1" reg="$2"
-	i2ctransfer -f -y "$I2C_BUS" "w2@${address}" \
-		"0x${reg:0:2}" "0x${reg:2:2}" r1
-}
-
-enable_both_reverse_i2c_links() {
-	local reg1 reg3
-
-	# MAX96716A: clear DIS_REM_CC_A (reg 0x0001 bit 4) and
-	# DIS_REM_CC_B (reg 0x0003 bit 2). The two serializer aliases then
-	# keep the otherwise identical remote camera addresses separate.
-	reg1="$(read_byte "$DES_ADDR" 0001)"
-	reg3="$(read_byte "$DES_ADDR" 0003)"
-	write_reg "$DES_ADDR" 0001 "$(printf '0x%02x' "$((reg1 & ~0x10))")"
-	write_reg "$DES_ADDR" 0003 "$(printf '0x%02x' "$((reg3 & ~0x04))")"
-}
-
 wait_for_serializer() {
 	local id="" attempt
 	for attempt in {1..30}; do
@@ -97,8 +78,6 @@ main() {
 	write_reg "$SER_ADDR" 0044 0x00
 	write_reg "$SER_ADDR" 0045 0x00
 
-	echo '==> Enable both MAX96716A reverse-I2C links'
-	enable_both_reverse_i2c_links
 
 	sleep 0.1
 	sensor_id="$(read_id "$SENSOR_ALIAS" 0016 2>/dev/null || true)"
