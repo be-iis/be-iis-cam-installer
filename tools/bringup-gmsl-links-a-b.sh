@@ -44,6 +44,10 @@ read_id() {
   i2ctransfer -f -y "$I2C_BUS" "w2@${address}" 0x00 0x16 r2
 }
 
+read_serializer_id() {
+  i2ctransfer -f -y "$I2C_BUS" "w2@${SER_ADDR}" 0x00 0x0d r2
+}
+
 select_link() {
   local link="$1" enable reset
   case "$link" in
@@ -64,7 +68,7 @@ configure_serializer_csi() {
   if [[ "$link" == A ]]; then focus_alias=0xb8; else focus_alias=0xba; fi
 
   echo "==> Configure MAX96717 Link-$link CSI input, tunnel and focus alias"
-  [[ "$(read_id "$SER_ADDR")" == '0xbf 0x06' ]] ||
+  [[ "$(read_serializer_id)" == '0xbf 0x06' ]] ||
     die "Link-$link serializer is not reachable."
 
   # Second MAX96717 translator: local focus alias -> remote DW9807 0x0c.
