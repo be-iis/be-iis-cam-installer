@@ -14,33 +14,6 @@ The repository contains the tested register initialization, a persistent
 systemd service, the IMX708 horizontal-blanking driver patch, capture tools,
 GStreamer helpers, diagnostics, and the legacy MAX96714 overlay work.
 
-## Current manual dual-link bring-up status
-
-The current branch uses explicit commands only; it does not install or start a systemd service.
-
-Validated on the target Pi:
-
-- Link A: MAX96717, IMX708 and DW9817 focus are reachable through aliases `0x52` and `0x5c`.
-- Link B: MAX96717, IMX708 and DW9817 focus are reachable through aliases `0x53` and `0x5d`.
-- The two IMX708 driver nodes load simultaneously.
-  - Link A is connected to RP1 **CSI1**.
-  - Link B is connected to RP1 **CSI0**.
-- `make video-a` applies the previously known Link-A video-pipe configuration:
-  MAX96716A pipe 0 → Port A / DPHY0 → CSI1.
-  Link B intentionally remains I2C-only during this test.
-
-Manual sequence:
-
-```bash
-make unoverlay
-make cameras-a-b
-make video-a
-rpicam-hello --camera 1 -t 0 --width 2304 --height 1296
-```
-
-The camera index is discovery order and can change. Check `rpicam-hello --list-cameras`;
-for the current ordering Link A is the node at `imx708@52`.
-
 ## Tested configuration
 
 - Raspberry Pi 5
