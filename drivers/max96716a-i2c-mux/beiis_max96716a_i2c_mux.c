@@ -54,7 +54,8 @@ static int beiis_write_reg(struct beiis_max96716a_mux *mux, u16 reg, u8 value)
 	};
 	int ret;
 
-	ret = i2c_transfer(mux->des->adapter, &msg, 1);
+	/* The I2C mux core has already locked the parent adapter in select(). */
+	ret = __i2c_transfer(mux->des->adapter, &msg, 1);
 	if (ret == 1)
 		return 0;
 
@@ -123,7 +124,7 @@ static int __init beiis_max96716a_mux_init(void)
 	if (ret)
 		goto del_adapters;
 
-	pr_info("beiis-max96716a-i2c-mux: i2c-%d Link A, i2c-%d Link B (parent i2c-%d)\\n",
+	pr_info("beiis-max96716a-i2c-mux: i2c-%d Link A, i2c-%d Link B (parent i2c-%d)\n",
 		beiis_muxc->adapter[0]->nr, beiis_muxc->adapter[1]->nr,
 		parent_bus);
 	return 0;
