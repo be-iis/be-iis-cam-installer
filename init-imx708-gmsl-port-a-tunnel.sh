@@ -152,32 +152,6 @@ find_media_graph()
 		die "Could not find the IMX708 V4L2 subdevice."
 }
 
-silence_link_b_video()
-{
-	local serializer_id
-
-	log "Disabling Link-B video pipe before Link-A bring-up"
-
-	# Select Link B for reverse I2C without configuring its CSI path.
-	write_reg "$DES_ADDR" 0004 0x02
-	write_reg "$DES_ADDR" 0011 0x0f
-	write_reg "$DES_ADDR" 0013 0x01
-	sleep 0.1
-	write_reg "$DES_ADDR" 0013 0x00
-
-	serializer_id="$(read_id "$SER_ADDR" 2>/dev/null || true)"
-	if [[ "$serializer_id" == "0xbf 0x06" ]]; then
-		# Keep Link B quiet until it is explicitly routed to its own CSI output.
-		write_reg "$SER_ADDR" 0002 0x03
-		printf 'MAX96717 Link-B ID/revision: %s (video pipe disabled)\n' "$serializer_id"
-	else
-		printf 'MAX96717 Link-B: unavailable; continuing with Link A only\n'
-	fi
-
-	# Restore reverse-I2C selection before configuring Link A.
-	write_reg "$DES_ADDR" 0004 0x01
-}
-
 configure_link()
 {
 	local status
@@ -473,7 +447,6 @@ power_reset_camera()
 
 initialize_all()
 {
-	silence_link_b_video
 	power_reset_camera
 	configure_link
 	configure_serializer
