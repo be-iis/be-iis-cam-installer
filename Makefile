@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := all-a
 
-.PHONY: driver i2c-mux-driver init-a init-b init-a-b overlays-a-b cameras-a-b unoverlay remove-service all-a all status clean
+.PHONY: driver i2c-mux-driver init-a init-b init-a-b a overlays-a-b cameras-a-b unoverlay remove-service all-a all status clean
 
 # Build and install the patched IMX708 module. No camera configuration happens here.
 driver:
@@ -23,6 +23,11 @@ init-b:
 # ADI-derived dual-link control-plane bring-up for sensor and focus aliases.
 init-a-b:
 	sudo bash tools/init-gmsl-links-a-b.sh
+
+# Verified Link-A video sequence after the dual I2C setup.
+# It configures Link A only; Link B remains I2C-only.
+a:
+	sudo bash tools/bringup-gmsl-link-a.sh
 
 # Compile and load two IMX708 overlays: Link A -> CSI1, Link B -> CSI0.
 overlays-a-b:
