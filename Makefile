@@ -1,16 +1,19 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := all-a
 
-.PHONY: driver init-a unoverlay remove-service all-a all status clean
+.PHONY: driver init-a init-b unoverlay remove-service all-a all status clean
 
 # Build and install the patched IMX708 module. No camera configuration happens here.
 driver:
 	sudo bash tools/build-imx708-driver.sh
 
-# Pure I2C control-plane bring-up for Link A.
-# It configures the serializer, IMX708 reset/clock and local alias 0x52.
+# Pure I2C control-plane bring-up for physical Link A, alias 0x52.
 init-a:
 	sudo bash tools/init-gmsl-link-a.sh
+
+# Pure I2C control-plane bring-up for physical Link B, alias 0x53.
+init-b:
+	sudo bash tools/init-gmsl-link-b.sh
 
 # Remove only BE-IIS dynamically loaded camera overlays.
 unoverlay:
