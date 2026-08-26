@@ -1,11 +1,16 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := all-a
 
-.PHONY: driver init-a init-b unoverlay remove-service all-a all status clean
+.PHONY: driver i2c-mux-driver init-a init-b unoverlay remove-service all-a all status clean
 
 # Build and install the patched IMX708 module. No camera configuration happens here.
 driver:
 	sudo bash tools/build-imx708-driver.sh
+
+# Build and install only the MAX96716A I2C mux module.
+# It creates virtual I2C buses for Link A and Link B; it is not a media driver.
+i2c-mux-driver:
+	$(MAKE) -C drivers/max96716a-i2c-mux install
 
 # Pure I2C control-plane bring-up for physical Link A, alias 0x52.
 init-a:
@@ -35,3 +40,4 @@ status:
 
 clean:
 	$(MAKE) -C drivers/imx708 clean
+	$(MAKE) -C drivers/max96716a-i2c-mux clean
