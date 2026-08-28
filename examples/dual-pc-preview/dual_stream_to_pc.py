@@ -5,7 +5,6 @@ import argparse
 import pathlib
 import signal
 import sys
-import threading
 
 import gi
 
@@ -16,8 +15,7 @@ from dual_preview import (  # noqa: E402
     PREVIEW_WIDTH,
     PREVIEW_Y,
     branch,
-    capture,
-    feed,
+    start_captures,
 )
 
 gi.require_version("Gst", "1.0")
@@ -58,11 +56,7 @@ def main() -> int:
     bus.connect("message", on_message)
     signal.signal(signal.SIGINT, lambda *_: loop.quit())
     pipeline.set_state(Gst.State.PLAYING)
-    captures = [capture(0), capture(1)]
-    for process, name in zip(captures, ("camera0", "camera1")):
-        threading.Thread(
-            target=feed, args=(process, pipeline.get_by_name(name)), daemon=True
-        ).start()
+    captures = start_captures(pipeline)
     try:
         loop.run()
     finally:
