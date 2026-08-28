@@ -9,18 +9,13 @@ import gi
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
-gi.require_version("GstVideo", "1.0")
-from gi.repository import GLib, Gst, GstVideo
+from gi.repository import GLib, Gst
 
 DISPLAY_WIDTH, DISPLAY_HEIGHT = 800, 480
 PREVIEW_WIDTH, PREVIEW_HEIGHT = 400, 225
 PREVIEW_Y = (DISPLAY_HEIGHT - PREVIEW_HEIGHT) // 2
 CAPTURE_WIDTH, CAPTURE_HEIGHT, FRAMERATE = 1024, 576, 30
-Y_SIZE = CAPTURE_WIDTH * CAPTURE_HEIGHT
-UV_SIZE = (CAPTURE_WIDTH // 2) * (CAPTURE_HEIGHT // 2)
-FRAME_SIZE = Y_SIZE + 2 * UV_SIZE
-I420_OFFSETS = [0, Y_SIZE, Y_SIZE + UV_SIZE, 0]
-I420_STRIDES = [CAPTURE_WIDTH, CAPTURE_WIDTH // 2, CAPTURE_WIDTH // 2, 0]
+FRAME_SIZE = CAPTURE_WIDTH * CAPTURE_HEIGHT * 3 // 2
 
 
 def capture(camera):
@@ -36,14 +31,11 @@ def capture(camera):
 
 
 def branch(name, pad):
-    caps = (
-        f"video/x-raw,format=I420,width={CAPTURE_WIDTH},"
-        f"height={CAPTURE_HEIGHT},framerate={FRAMERATE}/1,"
-        "pixel-aspect-ratio=1/1"
-    )
     return (
-        f"appsrc name={name} caps={caps} is-live=true block=true "
-        f"do-timestamp=true format=time "
+        f"appsrc name={name} is-live=true block=true do-timestamp=true "
+        f"format=time "
+        f"! rawvideoparse format=i420 width={CAPTURE_WIDTH} "
+        f"height={CAPTURE_HEIGHT} framerate={FRAMERATE}/1 "
         f"! videoconvert ! videoscale "
         f"! video/x-raw,width={PREVIEW_WIDTH},height={PREVIEW_HEIGHT},"
         f"pixel-aspect-ratio=1/1 "
@@ -63,10 +55,6 @@ def feed(process, appsrc):
 
         buffer = Gst.Buffer.new_allocate(None, FRAME_SIZE, None)
         buffer.fill(0, data)
-        GstVideo.buffer_add_video_meta_full(
-            buffer, GstVideo.VideoFrameFlags.NONE, GstVideo.VideoFormat.I420,
-            CAPTURE_WIDTH, CAPTURE_HEIGHT, 3, I420_OFFSETS, I420_STRIDES,
-        )
         if appsrc.emit("push-buffer", buffer) != Gst.FlowReturn.OK:
             return
 
