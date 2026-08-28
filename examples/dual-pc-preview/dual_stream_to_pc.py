@@ -9,16 +9,13 @@ import sys
 import gi
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "dual-hdmi-preview"))
-from dual_preview import (  # noqa: E402
-    PREVIEW_HEIGHT,
-    PREVIEW_WIDTH,
-    branch,
-    start_captures,
-)
+from dual_preview import PREVIEW_WIDTH, branch, start_captures  # noqa: E402
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
 from gi.repository import GLib, Gst  # noqa: E402
+
+STREAM_HEIGHT = 224  # I420/JPEG 4:2:0 requires an even height.
 
 
 def main() -> int:
@@ -32,12 +29,12 @@ def main() -> int:
     Gst.init(None)
     output_width = PREVIEW_WIDTH * 2
     description = " ".join((
-        branch("camera0", "sink_0"),
-        branch("camera1", "sink_1"),
+        branch("camera0", "sink_0", STREAM_HEIGHT),
+        branch("camera1", "sink_1", STREAM_HEIGHT),
         "compositor name=compositor "
         "sink_0::xpos=0 sink_0::ypos=0 "
         f"sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos=0 ! "
-        f"video/x-raw,width={output_width},height={PREVIEW_HEIGHT} ! "
+        f"video/x-raw,width={output_width},height={STREAM_HEIGHT} ! "
         "videoconvert ! jpegenc quality=85 ! rtpjpegpay ! "
         f"udpsink host={args.host} port={args.port} sync=false",
     ))
