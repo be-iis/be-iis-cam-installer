@@ -10,10 +10,8 @@ import gi
 
 sys.path.insert(0, str(pathlib.Path(__file__).parents[1] / "dual-hdmi-preview"))
 from dual_preview import (  # noqa: E402
-    DISPLAY_HEIGHT,
-    DISPLAY_WIDTH,
+    PREVIEW_HEIGHT,
     PREVIEW_WIDTH,
-    PREVIEW_Y,
     branch,
     start_captures,
 )
@@ -32,13 +30,14 @@ def main() -> int:
     args = parser.parse_args()
 
     Gst.init(None)
+    output_width = PREVIEW_WIDTH * 2
     description = " ".join((
         branch("camera0", "sink_0"),
         branch("camera1", "sink_1"),
         "compositor name=compositor "
-        f"sink_0::xpos=0 sink_0::ypos={PREVIEW_Y} "
-        f"sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos={PREVIEW_Y} ! "
-        f"video/x-raw,width={DISPLAY_WIDTH},height={DISPLAY_HEIGHT} ! "
+        "sink_0::xpos=0 sink_0::ypos=0 "
+        f"sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos=0 ! "
+        f"video/x-raw,width={output_width},height={PREVIEW_HEIGHT} ! "
         "videoconvert ! jpegenc quality=85 ! rtpjpegpay ! "
         f"udpsink host={args.host} port={args.port} sync=false",
     ))
