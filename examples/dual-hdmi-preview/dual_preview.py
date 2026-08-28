@@ -31,14 +31,14 @@ def capture(camera):
     )
 
 
-def branch(name, pad):
+def branch(name, pad, preview_height=PREVIEW_HEIGHT):
     return (
         f"appsrc name={name} is-live=true block=true do-timestamp=true "
         f"format=time "
         f"! rawvideoparse format=i420 width={CAPTURE_WIDTH} "
         f"height={CAPTURE_HEIGHT} framerate={FRAMERATE}/1 "
         f"! videoconvert ! videoscale "
-        f"! video/x-raw,width={PREVIEW_WIDTH},height={PREVIEW_HEIGHT},"
+        f"! video/x-raw,width={PREVIEW_WIDTH},height={preview_height},"
         f"pixel-aspect-ratio=1/1 "
         f"! queue max-size-buffers=2 leaky=downstream ! compositor.{pad}"
     )
