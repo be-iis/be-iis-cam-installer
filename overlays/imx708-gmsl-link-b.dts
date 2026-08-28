@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: GPL-2.0-only
-// Link-A IMX708 and DW9817 behind MAX96717 aliases 0x52 and 0x5c.
+// Link-B IMX708 and DW9817 behind MAX96717 aliases 0x53 and 0x5d.
 /dts-v1/;
 /plugin/;
 
@@ -7,10 +7,9 @@
 	compatible = "brcm,bcm2835";
 
 	fragment@0 { target = <&i2c0if>; __overlay__ { status = "okay"; }; };
-	clk_frag: fragment@1 { target = <&cam1_clk>; __overlay__ { status = "okay"; clock-frequency = <24000000>; }; };
-	fragment@2 { target = <&i2c0mux>; __overlay__ { status = "okay"; }; };
-	reg_frag: fragment@3 {
-		target = <&cam1_reg>;
+	clk_frag: fragment@1 { target = <&cam0_clk>; __overlay__ { status = "okay"; clock-frequency = <24000000>; }; };
+	reg_frag: fragment@2 {
+		target = <&cam0_reg>;
 		cam_reg: __overlay__ {
 			startup-delay-us = <70000>;
 			off-on-delay-us = <30000>;
@@ -20,50 +19,52 @@
 	};
 
 	i2c_frag: fragment@100 {
+		// Same upstream I2C bus as Link A: aliases distinguish the remote devices.
 		target = <&i2c_csi_dsi>;
 		__overlay__ {
 			#address-cells = <1>;
 			#size-cells = <0>;
 			status = "okay";
-			cam_node_a: imx708@52 {
+			cam_node_b: imx708@53 {
 				compatible = "sony,imx708";
-				reg = <0x52>;
+				reg = <0x53>;
 				status = "okay";
-				clocks = <&cam1_clk>;
+				clocks = <&cam0_clk>;
 				clock-names = "inclk";
-				vana1-supply = <&cam1_reg>;
+				vana1-supply = <&cam0_reg>;
 				vana2-supply = <&cam_dummy_reg>;
 				vdig-supply = <&cam_dummy_reg>;
 				vddl-supply = <&cam_dummy_reg>;
 				rotation = <180>;
 				orientation = <2>;
-				lens-focus = <&vcm_node_a>;
+				lens-focus = <&vcm_node_b>;
 				port {
-					cam_endpoint_a: endpoint {
+					cam_endpoint_b: endpoint {
 						clock-lanes = <0>;
 						data-lanes = <1 2>;
 						clock-noncontinuous;
 						link-frequencies = /bits/ 64 <450000000>;
-						remote-endpoint = <&csi_ep_a>;
+						remote-endpoint = <&csi_ep_b>;
 					};
 				};
 			};
-			vcm_node_a: dw9817@5c {
+			vcm_node_b: dw9817@5d {
 				compatible = "dongwoon,dw9817-vcm";
-				reg = <0x5c>;
+				reg = <0x5d>;
 				status = "okay";
-				VDD-supply = <&cam1_reg>;
+				VDD-supply = <&cam0_reg>;
 			};
 		};
 	};
 
 	csi_frag: fragment@101 {
-		target = <&csi1>;
+		// Link B has its own RP1-CFE source; it does not share CSI1 with Link A.
+		target = <&csi0>;
 		csi: __overlay__ {
 			status = "okay";
 			port {
-				csi_ep_a: endpoint {
-					remote-endpoint = <&cam_endpoint_a>;
+				csi_ep_b: endpoint {
+					remote-endpoint = <&cam_endpoint_b>;
 					clock-lanes = <0>;
 					data-lanes = <1 2>;
 					clock-noncontinuous;
@@ -72,5 +73,5 @@
 		};
 	};
 
-	fragment@102 { target = <&csi1>; __dormant__ { compatible = "brcm,bcm2835-unicam-legacy"; }; };
+	fragment@102 { target = <&csi0>; __dormant__ { compatible = "brcm,bcm2835-unicam-legacy"; }; };
 };

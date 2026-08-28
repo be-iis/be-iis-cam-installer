@@ -1,58 +1,63 @@
 SHELL := /bin/bash
-.DEFAULT_GOAL := build
+.DEFAULT_GOAL := all-a
 
-PREFIX ?= /usr/local
-LIBEXEC_DIR ?= /usr/libexec/be-iis-camera
-SYSTEMD_DIR ?= /etc/systemd/system
+.PHONY: driver i2c-mux-driver init-a init-b init-a-b a a-b overlays-a-b cameras-a-b unoverlay remove-service all-a all status clean
 
-.PHONY: prepare fetch patch build install-driver install-userspace \
-	configure enable-service install all status clean distclean
+# Build and install the patched IMX708 module. No camera configuration happens here.
+driver:
+	sudo bash tools/build-imx708-driver.sh
 
-prepare fetch patch build clean distclean:
-	$(MAKE) -C drivers/imx708 $@
+# Build and install only the experimental MAX96716A I2C mux module.
+# It creates virtual I2C buses; it is not a media driver and is not needed below.
+i2c-mux-driver:
+	$(MAKE) -C drivers/max96716a-i2c-mux install
 
-install-driver:
-	$(MAKE) -C drivers/imx708 install
+# Pure I2C control-plane bring-up for physical Link A, alias 0x52.
+init-a:
+	sudo bash tools/init-gmsl-link-a.sh
 
-install-userspace:
-	sudo dtc -@ -H epapr -I dts -O dtb -o /boot/firmware/overlays/imx708-gmsl-link-a.dtbo overlays/imx708-gmsl-link-a.dts
-	sudo install -D -m 0755 init-imx708-gmsl-port-a-tunnel.sh $(LIBEXEC_DIR)/init-link-a.sh
-	sudo install -D -m 0644 tools/ina226/ina226-common.sh $(LIBEXEC_DIR)/ina226-common.sh
-	sudo install -D -m 0755 tools/ina226/power-reset-camera.sh $(LIBEXEC_DIR)/power-reset-camera.sh
-	sudo install -D -m 0755 tools/ina226/power-reset-link-a.sh $(LIBEXEC_DIR)/power-reset-link-a.sh
-	sudo install -D -m 0755 tools/ina226/init-alerts.sh $(LIBEXEC_DIR)/ina226-init-alerts.sh
-	sudo install -D -m 0755 tools/ina226/set-ocp.sh $(LIBEXEC_DIR)/set-ocp.sh
-	sudo install -D -m 0755 tools/ina226/set-ovp.sh $(LIBEXEC_DIR)/set-ovp.sh
-	sudo install -D -m 0755 tools/ina226/clear-alert.sh $(LIBEXEC_DIR)/clear-alert.sh
-	sudo install -D -m 0755 tools/ina226/dump.sh $(LIBEXEC_DIR)/dump.sh
-	sudo install -D -m 0755 tools/capture/capture-image.sh $(PREFIX)/bin/beiis-capture-image
-	sudo install -D -m 0755 tools/capture/capture-video.sh $(PREFIX)/bin/beiis-capture-video
-	sudo install -D -m 0644 tools/capture/capture-common.sh $(LIBEXEC_DIR)/capture-common.sh
-	sudo install -D -m 0755 tools/gstreamer/preview.sh $(PREFIX)/bin/beiis-gst-preview
-	sudo install -D -m 0755 tools/gstreamer/record.sh $(PREFIX)/bin/beiis-gst-record
-	sudo install -D -m 0755 tools/raw/raw10-to-png.py $(PREFIX)/bin/beiis-raw10-to-png
-	sudo install -D -m 0644 systemd/be-iis-camera-init.service $(SYSTEMD_DIR)/be-iis-camera-init.service
-	sudo ln -sfn $(LIBEXEC_DIR)/init-link-a.sh $(PREFIX)/bin/beiis-camera-init
-	sudo ln -sfn $(LIBEXEC_DIR)/ina226-init-alerts.sh $(PREFIX)/bin/beiis-ina226-init-alerts
-	sudo ln -sfn $(LIBEXEC_DIR)/set-ocp.sh $(PREFIX)/bin/beiis-ina226-set-ocp
-	sudo ln -sfn $(LIBEXEC_DIR)/set-ovp.sh $(PREFIX)/bin/beiis-ina226-set-ovp
-	sudo ln -sfn $(LIBEXEC_DIR)/clear-alert.sh $(PREFIX)/bin/beiis-ina226-clear-alert
-	sudo ln -sfn $(LIBEXEC_DIR)/dump.sh $(PREFIX)/bin/beiis-ina226-dump
+# Pure I2C control-plane bring-up for physical Link B, alias 0x53.
+init-b:
+	sudo bash tools/init-gmsl-link-b.sh
 
-configure:
-	sudo config/configure-boot.sh
+# Dual-link I2C control plane: sensor and focus aliases, no video pipeline.
+init-a-b:
+	sudo bash tools/init-gmsl-links-a-b.sh
 
-enable-service: install-userspace
+# Video for Link A only. This intentionally enables Pipe Y only.
+a:
+	sudo bash tools/bringup-gmsl-link-a.sh
+
+# Verified dual-video configuration: A -> CSI1, B -> CSI0.
+# Prerequisite: make cameras-a-b
+a-b:
+	sudo bash tools/bringup-gmsl-links-a-b.sh
+
+# Compile and load two IMX708 overlays: Link A -> CSI1, Link B -> CSI0.
+overlays-a-b:
+	sudo bash tools/load-dual-imx708-overlays.sh
+
+# Full manual driver discovery sequence. No systemd is involved.
+cameras-a-b: init-a-b overlays-a-b
+
+# Remove only BE-IIS dynamically loaded camera overlays.
+unoverlay:
+	sudo bash tools/remove-camera-overlays.sh
+
+# Remove the formerly installed automatic init service from this Pi.
+remove-service:
+	sudo systemctl disable --now be-iis-camera-init.service 2>/dev/null || true
+	sudo rm -f /etc/systemd/system/be-iis-camera-init.service
 	sudo systemctl daemon-reload
-	sudo systemctl enable be-iis-camera-init.service
 
-install: install-driver install-userspace configure enable-service
-	@echo
-	@echo "Installation complete. No reboot was performed."
-	@echo "Reboot explicitly, then inspect: systemctl status be-iis-camera-init.service"
+# Explicit manual workflow. There is intentionally no systemd unit.
+all-a: driver init-a
 
-all: prepare fetch patch build install
+all: all-a
 
 status:
 	$(MAKE) -C drivers/imx708 status
-	@systemctl status be-iis-camera-init.service --no-pager 2>/dev/null || true
+
+clean:
+	$(MAKE) -C drivers/imx708 clean
+	$(MAKE) -C drivers/max96716a-i2c-mux clean
