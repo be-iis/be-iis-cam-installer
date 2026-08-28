@@ -32,7 +32,10 @@ Show the two camera images in one window:
 ```bash
 gst-launch-1.0 -v \
   udpsrc port=5000 caps="application/x-rtp,media=video,encoding-name=JPEG,payload=26,clock-rate=90000" \
-  ! rtpjpegdepay ! jpegdec ! videoconvert ! autovideosink sync=false
+  ! rtpjitterbuffer latency=50 \
+  ! rtpjpegdepay ! jpegdec ! videoconvert ! autovideosink
 ```
 
-Camera 0 appears on the left and camera 1 on the right.
+Camera 0 appears on the left and camera 1 on the right. The receiver keeps
+normal output synchronisation enabled; do not add `sync=false` when a
+tear-free display is required.
