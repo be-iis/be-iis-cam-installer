@@ -1,56 +1,106 @@
 #!/usr/bin/env python3
 """Dual camera HDMI preview — example implementation only."""
-import signal, subprocess, sys, threading
+import signal
+import subprocess
+import sys
+import threading
+
 import gi
-gi.require_version("Gst", "1.0"); gi.require_version("GLib", "2.0")
+
+gi.require_version("Gst", "1.0")
+gi.require_version("GLib", "2.0")
 from gi.repository import GLib, Gst
 
 DISPLAY_WIDTH, DISPLAY_HEIGHT = 800, 480
 PREVIEW_WIDTH, PREVIEW_HEIGHT = 400, 225
 PREVIEW_Y = (DISPLAY_HEIGHT - PREVIEW_HEIGHT) // 2
 CAPTURE_WIDTH, CAPTURE_HEIGHT, FRAMERATE = 1024, 576, 30
-FRAME_SIZE = CAPTURE_WIDTH * CAPTURE_HEIGHT * 3 // 2
-FRAME_DURATION = Gst.SECOND // FRAMERATE
+READ_SIZE = 64 * 1024
+
 
 def capture(camera):
-    return subprocess.Popen(["rpicam-vid","--camera",str(camera),"--nopreview","--codec","yuv420","--width",str(CAPTURE_WIDTH),"--height",str(CAPTURE_HEIGHT),"--framerate",str(FRAMERATE),"--timeout","0","--output","-"],stdout=subprocess.PIPE)
+    return subprocess.Popen(
+        [
+            "rpicam-vid", "--camera", str(camera), "--nopreview",
+            "--codec", "yuv420", "--width", str(CAPTURE_WIDTH),
+            "--height", str(CAPTURE_HEIGHT), "--framerate", str(FRAMERATE),
+            "--timeout", "0", "--output", "-",
+        ],
+        stdout=subprocess.PIPE,
+    )
+
 
 def branch(name, pad):
-    caps = f"video/x-raw,format=I420,width={CAPTURE_WIDTH},height={CAPTURE_HEIGHT},framerate={FRAMERATE}/1,pixel-aspect-ratio=1/1"
-    return (f"appsrc name={name} caps={caps} is-live=true block=true format=time ! videoconvert ! videoscale ! video/x-raw,width={PREVIEW_WIDTH},height={PREVIEW_HEIGHT},pixel-aspect-ratio=1/1 ! queue max-size-buffers=2 leaky=downstream ! compositor.{pad}")
+    return (
+        f"appsrc name={name} is-live=true block=true format=bytes "
+        f"! rawvideoparse format=i420 width={CAPTURE_WIDTH} "
+        f"height={CAPTURE_HEIGHT} framerate={FRAMERATE}/1 "
+        f"! videoconvert ! videoscale "
+        f"! video/x-raw,width={PREVIEW_WIDTH},height={PREVIEW_HEIGHT},"
+        f"pixel-aspect-ratio=1/1 "
+        f"! queue max-size-buffers=2 leaky=downstream ! compositor.{pad}"
+    )
+
 
 def feed(process, appsrc):
-    frame_number = 0
     while True:
-        data = bytearray()
-        while len(data) < FRAME_SIZE:
-            chunk = process.stdout.read(FRAME_SIZE - len(data))
-            if not chunk:
-                appsrc.emit("end-of-stream"); return
-            data.extend(chunk)
-        buffer = Gst.Buffer.new_allocate(None, FRAME_SIZE, None)
+        data = process.stdout.read(READ_SIZE)
+        if not data:
+            appsrc.emit("end-of-stream")
+            return
+        buffer = Gst.Buffer.new_allocate(None, len(data), None)
         buffer.fill(0, data)
-        buffer.pts = frame_number * FRAME_DURATION
-        buffer.duration = FRAME_DURATION
-        frame_number += 1
-        if appsrc.emit("push-buffer", buffer) != Gst.FlowReturn.OK: return
+        if appsrc.emit("push-buffer", buffer) != Gst.FlowReturn.OK:
+            return
+
 
 def main():
     Gst.init(None)
-    desc = " ".join((branch("camera0","sink_0"),branch("camera1","sink_1"),"compositor name=compositor "+f"sink_0::xpos=0 sink_0::ypos={PREVIEW_Y} sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos={PREVIEW_Y} ! "+f"video/x-raw,width={DISPLAY_WIDTH},height={DISPLAY_HEIGHT},pixel-aspect-ratio=1/1 ! videoconvert ! kmssink driver-name=vc4-drm"))
-    pipeline = Gst.parse_launch(desc); loop = GLib.MainLoop(); bus = pipeline.get_bus(); bus.add_signal_watch()
+    desc = " ".join((
+        branch("camera0", "sink_0"),
+        branch("camera1", "sink_1"),
+        "compositor name=compositor "
+        f"sink_0::xpos=0 sink_0::ypos={PREVIEW_Y} "
+        f"sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos={PREVIEW_Y} "
+        f"! video/x-raw,width={DISPLAY_WIDTH},height={DISPLAY_HEIGHT},"
+        "pixel-aspect-ratio=1/1 "
+        "! videoconvert ! kmssink driver-name=vc4-drm",
+    ))
+    pipeline = Gst.parse_launch(desc)
+    loop = GLib.MainLoop()
+    bus = pipeline.get_bus()
+    bus.add_signal_watch()
+
     def on_message(_bus, message):
         if message.type == Gst.MessageType.ERROR:
-            error, debug = message.parse_error(); print(f"Preview error: {error.message}\n{debug or ''}", file=sys.stderr); loop.quit()
-        elif message.type == Gst.MessageType.EOS: loop.quit()
-    bus.connect("message", on_message); signal.signal(signal.SIGINT, lambda *_: loop.quit()); pipeline.set_state(Gst.State.PLAYING)
+            error, debug = message.parse_error()
+            print(f"Preview error: {error.message}\n{debug or ''}", file=sys.stderr)
+            loop.quit()
+        elif message.type == Gst.MessageType.EOS:
+            loop.quit()
+
+    bus.connect("message", on_message)
+    signal.signal(signal.SIGINT, lambda *_: loop.quit())
+    pipeline.set_state(Gst.State.PLAYING)
+
     captures = [capture(0), capture(1)]
-    for process, name in zip(captures, ("camera0","camera1")): threading.Thread(target=feed,args=(process,pipeline.get_by_name(name)),daemon=True).start()
-    try: loop.run()
+    for process, name in zip(captures, ("camera0", "camera1")):
+        threading.Thread(
+            target=feed, args=(process, pipeline.get_by_name(name)), daemon=True
+        ).start()
+
+    try:
+        loop.run()
     finally:
         pipeline.set_state(Gst.State.NULL)
-        for process in captures: process.terminate()
         for process in captures:
-            try: process.wait(timeout=2)
-            except subprocess.TimeoutExpired: process.kill()
-if __name__ == "__main__": main()
+            process.terminate()
+        for process in captures:
+            try:
+                process.wait(timeout=2)
+            except subprocess.TimeoutExpired:
+                process.kill()
+
+
+if __name__ == "__main__":
+    main()
