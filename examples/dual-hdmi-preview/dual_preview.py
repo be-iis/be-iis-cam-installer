@@ -10,14 +10,17 @@ PREVIEW_WIDTH, PREVIEW_HEIGHT = 400, 225
 PREVIEW_Y = (DISPLAY_HEIGHT - PREVIEW_HEIGHT) // 2
 CAPTURE_WIDTH, CAPTURE_HEIGHT, FRAMERATE = 1024, 576, 30
 FRAME_SIZE = CAPTURE_WIDTH * CAPTURE_HEIGHT * 3 // 2
+FRAME_DURATION = Gst.SECOND // FRAMERATE
 
 def capture(camera):
     return subprocess.Popen(["rpicam-vid","--camera",str(camera),"--nopreview","--codec","yuv420","--width",str(CAPTURE_WIDTH),"--height",str(CAPTURE_HEIGHT),"--framerate",str(FRAMERATE),"--timeout","0","--output","-"],stdout=subprocess.PIPE)
 
 def branch(name, pad):
-    return (f"appsrc name={name} is-live=true block=true do-timestamp=true format=time ! rawvideoparse format=i420 width={CAPTURE_WIDTH} height={CAPTURE_HEIGHT} framerate={FRAMERATE}/1 ! videoconvert ! videoscale ! video/x-raw,width={PREVIEW_WIDTH},height={PREVIEW_HEIGHT},pixel-aspect-ratio=1/1 ! queue max-size-buffers=2 leaky=downstream ! compositor.{pad}")
+    caps = f"video/x-raw,format=I420,width={CAPTURE_WIDTH},height={CAPTURE_HEIGHT},framerate={FRAMERATE}/1,pixel-aspect-ratio=1/1"
+    return (f"appsrc name={name} caps={caps} is-live=true block=true format=time ! videoconvert ! videoscale ! video/x-raw,width={PREVIEW_WIDTH},height={PREVIEW_HEIGHT},pixel-aspect-ratio=1/1 ! queue max-size-buffers=2 leaky=downstream ! compositor.{pad}")
 
 def feed(process, appsrc):
+    frame_number = 0
     while True:
         data = bytearray()
         while len(data) < FRAME_SIZE:
@@ -25,7 +28,11 @@ def feed(process, appsrc):
             if not chunk:
                 appsrc.emit("end-of-stream"); return
             data.extend(chunk)
-        buffer = Gst.Buffer.new_allocate(None, FRAME_SIZE, None); buffer.fill(0, data)
+        buffer = Gst.Buffer.new_allocate(None, FRAME_SIZE, None)
+        buffer.fill(0, data)
+        buffer.pts = frame_number * FRAME_DURATION
+        buffer.duration = FRAME_DURATION
+        frame_number += 1
         if appsrc.emit("push-buffer", buffer) != Gst.FlowReturn.OK: return
 
 def main():
