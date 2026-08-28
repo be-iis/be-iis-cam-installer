@@ -43,6 +43,7 @@ def branch(name, pad):
 
 
 def feed(process, appsrc):
+    offset = 0
     while True:
         data = process.stdout.read(READ_SIZE)
         if not data:
@@ -50,6 +51,9 @@ def feed(process, appsrc):
             return
         buffer = Gst.Buffer.new_allocate(None, len(data), None)
         buffer.fill(0, data)
+        buffer.offset = offset
+        offset += len(data)
+        buffer.offset_end = offset
         if appsrc.emit("push-buffer", buffer) != Gst.FlowReturn.OK:
             return
 
