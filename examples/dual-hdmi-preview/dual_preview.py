@@ -9,13 +9,18 @@ import gi
 
 gi.require_version("Gst", "1.0")
 gi.require_version("GLib", "2.0")
-from gi.repository import GLib, Gst
+gi.require_version("GstVideo", "1.0")
+from gi.repository import GLib, Gst, GstVideo
 
 DISPLAY_WIDTH, DISPLAY_HEIGHT = 800, 480
 PREVIEW_WIDTH, PREVIEW_HEIGHT = 400, 225
 PREVIEW_Y = (DISPLAY_HEIGHT - PREVIEW_HEIGHT) // 2
 CAPTURE_WIDTH, CAPTURE_HEIGHT, FRAMERATE = 1024, 576, 30
-READ_SIZE = 64 * 1024
+Y_SIZE = CAPTURE_WIDTH * CAPTURE_HEIGHT
+UV_SIZE = (CAPTURE_WIDTH // 2) * (CAPTURE_HEIGHT // 2)
+FRAME_SIZE = Y_SIZE + 2 * UV_SIZE
+I420_OFFSETS = [0, Y_SIZE, Y_SIZE + UV_SIZE, 0]
+I420_STRIDES = [CAPTURE_WIDTH, CAPTURE_WIDTH // 2, CAPTURE_WIDTH // 2, 0]
 
 
 def capture(camera):
@@ -31,10 +36,14 @@ def capture(camera):
 
 
 def branch(name, pad):
+    caps = (
+        f"video/x-raw,format=I420,width={CAPTURE_WIDTH},"
+        f"height={CAPTURE_HEIGHT},framerate={FRAMERATE}/1,"
+        "pixel-aspect-ratio=1/1"
+    )
     return (
-        f"appsrc name={name} is-live=true block=true format=bytes "
-        f"! rawvideoparse format=i420 width={CAPTURE_WIDTH} "
-        f"height={CAPTURE_HEIGHT} framerate={FRAMERATE}/1 "
+        f"appsrc name={name} caps={caps} is-live=true block=true "
+        f"do-timestamp=true format=time "
         f"! videoconvert ! videoscale "
         f"! video/x-raw,width={PREVIEW_WIDTH},height={PREVIEW_HEIGHT},"
         f"pixel-aspect-ratio=1/1 "
@@ -43,17 +52,21 @@ def branch(name, pad):
 
 
 def feed(process, appsrc):
-    offset = 0
     while True:
-        data = process.stdout.read(READ_SIZE)
-        if not data:
-            appsrc.emit("end-of-stream")
-            return
-        buffer = Gst.Buffer.new_allocate(None, len(data), None)
+        data = bytearray()
+        while len(data) < FRAME_SIZE:
+            chunk = process.stdout.read(FRAME_SIZE - len(data))
+            if not chunk:
+                appsrc.emit("end-of-stream")
+                return
+            data.extend(chunk)
+
+        buffer = Gst.Buffer.new_allocate(None, FRAME_SIZE, None)
         buffer.fill(0, data)
-        buffer.offset = offset
-        offset += len(data)
-        buffer.offset_end = offset
+        GstVideo.buffer_add_video_meta_full(
+            buffer, GstVideo.VideoFrameFlags.NONE, GstVideo.VideoFormat.I420,
+            CAPTURE_WIDTH, CAPTURE_HEIGHT, 3, I420_OFFSETS, I420_STRIDES,
+        )
         if appsrc.emit("push-buffer", buffer) != Gst.FlowReturn.OK:
             return
 
