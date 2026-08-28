@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Dual camera HDMI preview — example implementation only."""
+import queue
 import signal
 import subprocess
 import sys
@@ -43,20 +44,40 @@ def branch(name, pad):
     )
 
 
-def feed(process, appsrc):
+def feed(process, frames):
+    """Read complete camera frames; never call GStreamer from this thread."""
     while True:
         data = bytearray()
         while len(data) < FRAME_SIZE:
             chunk = process.stdout.read(FRAME_SIZE - len(data))
             if not chunk:
-                appsrc.emit("end-of-stream")
+                frames.put(None)
                 return
             data.extend(chunk)
 
-        buffer = Gst.Buffer.new_allocate(None, FRAME_SIZE, None)
-        buffer.fill(0, data)
-        if appsrc.emit("push-buffer", buffer) != Gst.FlowReturn.OK:
-            return
+        try:
+            frames.put_nowait(bytes(data))
+        except queue.Full:
+            try:
+                frames.get_nowait()
+            except queue.Empty:
+                pass
+            frames.put_nowait(bytes(data))
+
+
+def latest_frame(frames):
+    data = None
+    while True:
+        try:
+            data = frames.get_nowait()
+        except queue.Empty:
+            return data
+
+
+def push_frame(appsrc, data):
+    buffer = Gst.Buffer.new_allocate(None, FRAME_SIZE, None)
+    buffer.fill(0, data)
+    return appsrc.emit("push-buffer", buffer) == Gst.FlowReturn.OK
 
 
 def main():
@@ -89,10 +110,24 @@ def main():
     pipeline.set_state(Gst.State.PLAYING)
 
     captures = [capture(0), capture(1)]
-    for process, name in zip(captures, ("camera0", "camera1")):
-        threading.Thread(
-            target=feed, args=(process, pipeline.get_by_name(name)), daemon=True
-        ).start()
+    frame_queues = [queue.Queue(maxsize=2), queue.Queue(maxsize=2)]
+    sources = [
+        (pipeline.get_by_name("camera0"), frame_queues[0]),
+        (pipeline.get_by_name("camera1"), frame_queues[1]),
+    ]
+    for process, frames in zip(captures, frame_queues):
+        threading.Thread(target=feed, args=(process, frames), daemon=True).start()
+
+    def drain_frames():
+        for appsrc, frames in sources:
+            data = latest_frame(frames)
+            if data is None:
+                continue
+            if not push_frame(appsrc, data):
+                return False
+        return True
+
+    GLib.timeout_add(1, drain_frames)
 
     try:
         loop.run()
