@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Dual camera HDMI preview — example implementation only.
 
-Not reference code.  Product implementations must provide their own
+Not reference code. Product implementations must provide their own
 validation, fault handling and performance qualification.
 """
 
@@ -19,6 +19,8 @@ DISPLAY_HEIGHT = 480
 PREVIEW_WIDTH = 400
 PREVIEW_HEIGHT = 225
 PREVIEW_Y = (DISPLAY_HEIGHT - PREVIEW_HEIGHT) // 2
+CAPTURE_WIDTH = 960
+CAPTURE_HEIGHT = 540
 FRAMERATE = 30
 
 CAMERA_0 = "/base/axi/pcie@1000120000/rp1/i2c@80000/imx708@53"
@@ -28,8 +30,11 @@ CAMERA_1 = "/base/axi/pcie@1000120000/rp1/i2c@80000/imx708@52"
 def source(camera_name: str, pad: str) -> str:
     return (
         f'libcamerasrc camera-name="{camera_name}" ! '
-        f'video/x-raw,format=NV12,width={PREVIEW_WIDTH},height={PREVIEW_HEIGHT},'
-        f'framerate={FRAMERATE}/1 ! queue ! compositor.{pad}'
+        f'video/x-raw,format=NV12,width={CAPTURE_WIDTH},height={CAPTURE_HEIGHT},'
+        f'framerate={FRAMERATE}/1 ! '
+        f'videoconvert ! videoscale ! '
+        f'video/x-raw,width={PREVIEW_WIDTH},height={PREVIEW_HEIGHT} ! '
+        f'queue ! compositor.{pad}'
     )
 
 
