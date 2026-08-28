@@ -17,8 +17,8 @@ make a-b
 
 ### HDMI preview on the Pi
 
-Shows camera 0 on the left and camera 1 on the right on the directly
-connected 800x480 HDMI display:
+Shows camera 0 on the left and camera 1 on the right on a directly connected
+800x480 HDMI display:
 
 ```bash
 python3 examples/dual-hdmi-preview/dual_preview.py
@@ -46,16 +46,37 @@ sudo apt install python3-gi python3-gst-1.0 \
   gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
 ```
 
+## Why this structure?
+
+Both cameras must be captured by two independent `rpicam-vid` processes.
+For this dual-camera setup, two `libcamerasrc` elements in one process led
+to a PiSP camera-frontend timeout.
+
+The camera process writes I420 frames at 1024x576 pixels. One frame is exactly
+884736 bytes. The Python reader therefore collects one complete frame before
+placing it in a short per-camera queue.
+
+The important detail is that the reader threads **do not call GStreamer**.
+Only the GLib main thread injects frames into the two `appsrc` elements.
+This was required here because pushing both live camera streams directly from
+two Python threads produced horizontal image offsets in the combined live
+image. Serialised injection removed the offsets.
+
+Old frames may be discarded when a queue is full. This keeps latency bounded;
+a discarded item is always a whole frame, never part of an image.
+
 ## For AI and developers
 
-- Camera acquisition must happen in **two separate `rpicam-vid` processes**.
-  Two `libcamerasrc` elements in one process cause a PiSP frontend timeout
-  on this dual-camera setup.
-- Each camera delivers 960x540 I420 data, but the libcamera buffer has a
-  1024-byte Y stride and 512-byte chroma strides. One frame is 829440 bytes.
-- The examples use GStreamer `appsrc` to receive complete frames, then
-  compose them as camera 0 left and camera 1 right.
-- HDMI output is DRM/KMS at 800x480. The camera images are scaled to 400x225
-  and vertically centred.
-- Do not treat camera index order as universal. This setup maps index 0 to
-  `imx708@53` (Link B) and index 1 to `imx708@52` (Link A).
+- Keep two separate `rpicam-vid` processes; do not replace them with two
+  `libcamerasrc` elements without validating the PiSP dual-camera case.
+- Capture format: I420, 1024x576, 30 fps, 884736 bytes/frame.
+- Preserve full-frame boundaries in the Python reader.
+- Use `rawvideoparse format=i420 width=1024 height=576 framerate=30/1`.
+  It reconstructs and timestamps complete raw video frames before conversion.
+- Feed `appsrc` from one serial GStreamer/GLib context. Reader threads may
+  read camera pipes and enqueue immutable frame data only.
+- The compositor places camera 0 left and camera 1 right. Do not assume the
+  numeric index maps universally to GMSL links; on this setup index 0 is
+  `imx708@53` (Link B) and index 1 is `imx708@52` (Link A).
+- HDMI uses the Raspberry Pi VC4 DRM driver and an 800x480 output. Camera
+  images are scaled to 400x225 and vertically centred.
