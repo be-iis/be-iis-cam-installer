@@ -30,7 +30,7 @@ def feed(process, appsrc):
 
 def main():
     Gst.init(None)
-    desc = " ".join((branch("camera0","sink_0"),branch("camera1","sink_1"),"compositor name=compositor "+f"sink_0::xpos=0 sink_0::ypos={PREVIEW_Y} sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos={PREVIEW_Y} ! "+f"video/x-raw,width={DISPLAY_WIDTH},height={DISPLAY_HEIGHT},pixel-aspect-ratio=1/1 ! videoconvert ! kmssink sync=false"))
+    desc = " ".join((branch("camera0","sink_0"),branch("camera1","sink_1"),"compositor name=compositor "+f"sink_0::xpos=0 sink_0::ypos={PREVIEW_Y} sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos={PREVIEW_Y} ! "+f"video/x-raw,width={DISPLAY_WIDTH},height={DISPLAY_HEIGHT},pixel-aspect-ratio=1/1 ! videoconvert ! kmssink driver-name=vc4-drm sync=false"))
     pipeline = Gst.parse_launch(desc); loop = GLib.MainLoop(); bus = pipeline.get_bus(); bus.add_signal_watch()
     def on_message(_bus, message):
         if message.type == Gst.MessageType.ERROR:
