@@ -54,7 +54,6 @@ def feed(process, frames):
                 frames.put(None)
                 return
             data.extend(chunk)
-
         try:
             frames.put_nowait(bytes(data))
         except queue.Full:
@@ -78,6 +77,28 @@ def push_frame(appsrc, data):
     buffer = Gst.Buffer.new_allocate(None, FRAME_SIZE, None)
     buffer.fill(0, data)
     return appsrc.emit("push-buffer", buffer) == Gst.FlowReturn.OK
+
+
+def start_captures(pipeline):
+    """Start both readers and inject frames from the GLib main thread."""
+    captures = [capture(0), capture(1)]
+    frame_queues = [queue.Queue(maxsize=2), queue.Queue(maxsize=2)]
+    sources = [
+        (pipeline.get_by_name("camera0"), frame_queues[0]),
+        (pipeline.get_by_name("camera1"), frame_queues[1]),
+    ]
+    for process, frames in zip(captures, frame_queues):
+        threading.Thread(target=feed, args=(process, frames), daemon=True).start()
+
+    def drain_frames():
+        for appsrc, frames in sources:
+            data = latest_frame(frames)
+            if data is not None and not push_frame(appsrc, data):
+                return False
+        return True
+
+    GLib.timeout_add(1, drain_frames)
+    return captures
 
 
 def main():
@@ -108,26 +129,7 @@ def main():
     bus.connect("message", on_message)
     signal.signal(signal.SIGINT, lambda *_: loop.quit())
     pipeline.set_state(Gst.State.PLAYING)
-
-    captures = [capture(0), capture(1)]
-    frame_queues = [queue.Queue(maxsize=2), queue.Queue(maxsize=2)]
-    sources = [
-        (pipeline.get_by_name("camera0"), frame_queues[0]),
-        (pipeline.get_by_name("camera1"), frame_queues[1]),
-    ]
-    for process, frames in zip(captures, frame_queues):
-        threading.Thread(target=feed, args=(process, frames), daemon=True).start()
-
-    def drain_frames():
-        for appsrc, frames in sources:
-            data = latest_frame(frames)
-            if data is None:
-                continue
-            if not push_frame(appsrc, data):
-                return False
-        return True
-
-    GLib.timeout_add(1, drain_frames)
+    captures = start_captures(pipeline)
 
     try:
         loop.run()
