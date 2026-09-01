@@ -32,7 +32,7 @@ check_camera()
 	need_command rpicam-hello
 	cameras="$(rpicam-hello --list-cameras 2>&1 || true)"
 	grep -qE '^[0-9]+[[:space:]]*:' <<<"$cameras" ||
-		die "no camera found; run: sudo systemctl restart be-iis-camera-init.service"
+		die "no camera found; run the manual bring-up: make unoverlay && make cameras-a-b && make a-b"
 }
 
 validate_autofocus_options()
