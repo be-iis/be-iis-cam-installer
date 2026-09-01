@@ -1,7 +1,7 @@
 SHELL := /bin/bash
 .DEFAULT_GOAL := all-a
 
-.PHONY: driver i2c-mux-driver init-a init-b init-a-b a a-b overlays-a-b cameras-a-b unoverlay remove-service all-a all status clean
+.PHONY: driver i2c-mux-driver init-a init-b init-a-b a a-b overlays-a-b cameras-a-b unoverlay all-a all status clean
 
 # Build and install the patched IMX708 module. No camera configuration happens here.
 driver:
@@ -43,12 +43,6 @@ cameras-a-b: init-a-b overlays-a-b
 # Remove only BE-IIS dynamically loaded camera overlays.
 unoverlay:
 	sudo bash tools/remove-camera-overlays.sh
-
-# Remove the formerly installed automatic init service from this Pi.
-remove-service:
-	sudo systemctl disable --now be-iis-camera-init.service 2>/dev/null || true
-	sudo rm -f /etc/systemd/system/be-iis-camera-init.service
-	sudo systemctl daemon-reload
 
 # Explicit manual workflow. There is intentionally no systemd unit.
 all-a: driver init-a
