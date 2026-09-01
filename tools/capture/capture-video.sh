@@ -2,10 +2,8 @@
 set -euo pipefail
 
 script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-common=/usr/libexec/be-iis-camera/capture-common.sh
-[[ -r "$common" ]] || common="$script_dir/capture-common.sh"
 # shellcheck source=capture-common.sh
-source "$common"
+source "$script_dir/capture-common.sh"
 
 megapixels=3
 output=
