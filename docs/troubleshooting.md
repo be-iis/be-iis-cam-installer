@@ -1,11 +1,13 @@
 # Troubleshooting
 
-## Camera service
+## Camera discovery
 
 ```bash
-systemctl status be-iis-camera-init.service
-journalctl -u be-iis-camera-init.service -b
-sudo beiis-camera-init status
+cd ~/be-iis-cam-installer
+make unoverlay
+make cameras-a-b
+make a-b
+rpicam-hello --list-cameras
 ```
 
 ## Media graph
@@ -20,7 +22,9 @@ media-ctl -d /dev/media3 -p |
 If PiSP links are enabled at the same time, run:
 
 ```bash
-sudo systemctl restart be-iis-camera-init.service
+make unoverlay
+make cameras-a-b
+make a-b
 ```
 
 ## A zero-byte RAW file
