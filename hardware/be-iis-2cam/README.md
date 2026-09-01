@@ -1,14 +1,20 @@
 # BE-IIS-2CAM
 
-The tested camera input uses MAX96716A Link A and CSI-2 Port A / DPHY0.
+The BE-IIS-GMSL2-2CAM HAT uses a MAX96716A dual deserializer at `0x28` and
+a TPL0102-100 digital potentiometer at `0x51`.
 
-Key addresses:
+The validated configuration uses two camera links:
 
-| Device | Linux 7-bit address |
-|---|---:|
-| MAX96716A | `0x28` |
-| TPL0102-100 | `0x51` |
+| Link | MAX96716A output | Raspberry Pi input |
+| --- | --- | --- |
+| A | Port A / DPHY0-1 | CSI1 |
+| B | Port B / DPHY2-3 | CSI0 / J3 |
 
-The known-good output is two CSI-2 lanes on CAM/DISP1. Register
-initialization is maintained in
-`profiles/be-iis-2cam-imx708/init.sh`.
+Initialize the links and video path with the manual workflow documented in the
+repository root:
+
+```bash
+make unoverlay
+make cameras-a-b
+make a-b
+```
