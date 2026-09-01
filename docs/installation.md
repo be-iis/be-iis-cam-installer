@@ -7,34 +7,21 @@ Raspberry Pi kernel this is normally provided by
 `raspberrypi-kernel-headers`. A custom kernel must provide
 `/lib/modules/$(uname -r)/build`.
 
-Install the packages listed in the root README, then run:
+Install the packages listed in the root README. Build the patched IMX708
+module for the running kernel with:
 
 ```bash
-make all
+make driver
 ```
 
-The installer edits `config.txt` only when I2C is not already enabled. Before
-an edit it creates a timestamped backup next to the file. It also installs:
-
-- `/lib/modules/$(uname -r)/updates/imx708.ko`
-- `/usr/libexec/be-iis-camera/init.sh`
-- `/etc/systemd/system/be-iis-camera-init.service`
-- `/etc/modules-load.d/be-iis-camera.conf`
-- user commands under `/usr/local/bin`
-
-No reboot is automatic.
-
-## Service control
+No script configures the camera automatically at boot. For the validated
+two-camera setup, use the manual sequence:
 
 ```bash
-sudo systemctl start be-iis-camera-init.service
-sudo systemctl restart be-iis-camera-init.service
-sudo systemctl status be-iis-camera-init.service
-journalctl -u be-iis-camera-init.service
+make unoverlay
+make cameras-a-b
+make a-b
 ```
 
-## Unattended boot
-
-The service is `Type=oneshot` and waits for `/dev/i2c-11`. It initializes the
-GMSL2 chain once, applies the standard IMX708 overlay when needed, and
-configures the direct RP1-CFE RAW path.
+See [Dual-camera manual bring-up](dual-camera-bringup.md) for the complete
+procedure, including camera discovery. No target reboots the Pi.
