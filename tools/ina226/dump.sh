@@ -2,8 +2,7 @@
 # Dump bus voltage and calculated current using raw INA226 register reads.
 set -Eeuo pipefail
 
-# Resolve the real script location. This is required because the public
-# command in /usr/local/bin is a symlink into /usr/libexec/be-iis-camera.
+# Resolve the real script location so this helper also works through a symlink.
 script_path="$(readlink -f -- "${BASH_SOURCE[0]}")"
 script_dir="$(cd -- "$(dirname -- "$script_path")" && pwd)"
 source "${script_dir}/ina226-common.sh"
