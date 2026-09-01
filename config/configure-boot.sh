@@ -40,10 +40,14 @@ elif ! grep -Eq '^[[:space:]]*dtparam=i2c_arm=on([[:space:]]|$)' "$boot_config";
 fi
 
 
+install -D -m 0644 "$script_dir/be-iis-camera-modules.conf" \
+	/etc/modules-load.d/be-iis-camera.conf
+
 if [[ "$changed" -eq 1 ]]; then
 	printf 'Enabled I2C in %s\n' "$boot_config"
 else
 	printf 'I2C is already enabled in %s\n' "$boot_config"
 fi
 
+printf 'Installed /etc/modules-load.d/be-iis-camera.conf\n'
 printf 'No reboot was performed.\n'
