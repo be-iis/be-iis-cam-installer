@@ -14,7 +14,7 @@ The default action initializes the complete chain and captures one RAW frame:
 sudo ./init.sh all /tmp/frame.raw
 ```
 
-For systemd, use initialization only:
+For initialization only, without a test capture:
 
 ```bash
 sudo ./init.sh init
