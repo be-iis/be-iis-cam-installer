@@ -26,6 +26,13 @@ python3 examples/dual-hdmi-preview/dual_preview.py
 
 Stop with `Ctrl+C`.
 
+### Stereo distance measurement
+
+The headless stereo demonstration overlays the distance at a fixed crosshair.
+It needs a one-time chessboard calibration and works directly via DRM/KMS:
+
+[`../stereo-distance-demo/README.md`](../stereo-distance-demo/README.md)
+
 ### Preview on a PC
 
 The companion example sends the same combined image to a PC over the local
