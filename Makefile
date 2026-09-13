@@ -1,14 +1,41 @@
 SHELL := /bin/bash
-.DEFAULT_GOAL := all-a
+.DEFAULT_GOAL := help
 
-.PHONY: driver i2c-mux-driver init-a init-b init-a-b a a-b overlays-a-b cameras-a-b unoverlay all-a all status clean
+CAMERA ?= 0
+CAPTURE_DIR ?= captures
+
+.PHONY: help driver i2c-mux-driver \
+	init-a init-b init-a-b \
+	pipeline-a pipeline-a-b \
+	overlays-a-b prepare-a-b unoverlay \
+	png png-0 png-1 video video-0 video-1 video-dual \
+	a a-b cameras-a-b all-a all status clean
+
+help:
+	@printf '%s\n' \
+		'BE-IIS camera targets:' \
+		'  make init-a          Initialise GMSL Link A control path' \
+		'  make init-b          Initialise GMSL Link B control path' \
+		'  make init-a-b        Initialise both GMSL control paths' \
+		'  make pipeline-a      Configure Link A video pipeline' \
+		'  make pipeline-a-b    Configure both video pipelines' \
+		'  make prepare-a-b     Initialise both links and load both IMX708 overlays' \
+		'  make unoverlay       Remove dynamically loaded BE-IIS camera overlays' \
+		'' \
+		'Capture / preview:' \
+		'  make png CAMERA=0    Save a PNG from rpicam camera 0' \
+		'  make png-0           Same for camera 0' \
+		'  make png-1           Same for camera 1' \
+		'  make video CAMERA=0  Live preview from camera 0' \
+		'  make video-0         Live preview from camera 0' \
+		'  make video-1         Live preview from camera 1' \
+		'  make video-dual      Side-by-side HDMI preview of cameras 0 and 1'
 
 # Build and install the patched IMX708 module. No camera configuration happens here.
 driver:
 	sudo bash tools/build-imx708-driver.sh
 
-# Build and install only the experimental MAX96716A I2C mux module.
-# It creates virtual I2C buses; it is not a media driver and is not needed below.
+# Build and install the MAX96716A I2C mux module.
 i2c-mux-driver:
 	$(MAKE) -C drivers/max96716a-i2c-mux install
 
@@ -24,29 +51,67 @@ init-b:
 init-a-b:
 	sudo bash tools/init-gmsl-links-a-b.sh
 
-# Video for Link A only. This intentionally enables Pipe Y only.
-a:
+# Configure video for Link A only. This intentionally enables Pipe Y only.
+pipeline-a:
 	sudo bash tools/bringup-gmsl-link-a.sh
 
-# Verified dual-video configuration: A -> CSI1, B -> CSI0.
-# Prerequisite: make cameras-a-b
-a-b:
+# Configure both video pipelines: A -> CSI1, B -> CSI0.
+pipeline-a-b:
 	sudo bash tools/bringup-gmsl-links-a-b.sh
 
 # Compile and load two IMX708 overlays: Link A -> CSI1, Link B -> CSI0.
 overlays-a-b:
 	sudo bash tools/load-dual-imx708-overlays.sh
 
-# Full manual driver discovery sequence. No systemd is involved.
-cameras-a-b: init-a-b overlays-a-b
+# Prepare both cameras for Linux discovery. Video-pipeline setup is separate.
+prepare-a-b: init-a-b overlays-a-b
 
 # Remove only BE-IIS dynamically loaded camera overlays.
 unoverlay:
 	sudo bash tools/remove-camera-overlays.sh
 
-# Explicit manual workflow. There is intentionally no systemd unit.
-all-a: driver init-a
+# Capture one PNG from the selected rpicam camera index.
+png:
+	@case "$(CAMERA)" in 0|1) ;; *) echo 'CAMERA must be 0 or 1' >&2; exit 2 ;; esac
+	@mkdir -p "$(CAPTURE_DIR)"
+	@file="$(CAPTURE_DIR)/camera-$(CAMERA)-$$(date +%Y%m%d-%H%M%S).png"; \
+		echo "Saving $$file"; \
+		rpicam-still --camera "$(CAMERA)" --nopreview --timeout 1000 \
+			--width 2304 --height 1296 --encoding png --output "$$file"
 
+png-0:
+	@$(MAKE) png CAMERA=0
+
+png-1:
+	@$(MAKE) png CAMERA=1
+
+# Live DRM preview from one camera. Stop with Ctrl+C.
+video:
+	@case "$(CAMERA)" in 0|1) ;; *) echo 'CAMERA must be 0 or 1' >&2; exit 2 ;; esac
+	rpicam-hello --camera "$(CAMERA)" --timeout 0 --width 2304 --height 1296
+
+video-0:
+	@$(MAKE) video CAMERA=0
+
+video-1:
+	@$(MAKE) video CAMERA=1
+
+# Side-by-side HDMI preview of both cameras.
+video-dual:
+	python3 examples/dual-hdmi-preview/dual_preview.py
+
+# Compatibility aliases for the previous short names.
+a: pipeline-a
+	@echo 'NOTE: make a is deprecated; use make pipeline-a.'
+
+a-b: pipeline-a-b
+	@echo 'NOTE: make a-b is deprecated; use make pipeline-a-b.'
+
+cameras-a-b: prepare-a-b
+	@echo 'NOTE: make cameras-a-b is deprecated; use make prepare-a-b.'
+
+# Legacy convenience targets. Not used by install.sh.
+all-a: driver init-a
 all: all-a
 
 status:
