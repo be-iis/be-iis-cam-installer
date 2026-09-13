@@ -5,16 +5,27 @@ repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
 printf '==> BE-IIS camera installer\n'
 
-sudo modprobe i2c-dev || true
+printf '\n==> Check Raspberry Pi boot configuration\n'
+boot_output="$(sudo bash "$repo_dir/config/configure-boot.sh")"
+printf '%s\n' "$boot_output"
 
-if [[ ! -e /dev/i2c-11 ]]; then
-	printf '\nCamera I2C bus /dev/i2c-11 is not available.\n'
-	printf 'The installer will enable dtparam=i2c_csi_dsi=on and required I2C support.\n'
-	sudo bash "$repo_dir/config/configure-boot.sh"
+if grep -q '^BE_IIS_REBOOT_REQUIRED=1$' <<<"$boot_output"; then
+	printf '\nThe Raspberry Pi boot configuration was changed.\n'
+	printf 'Required settings include:\n'
+	printf '  dtparam=i2c_csi_dsi=on\n'
+	printf '  camera_auto_detect=0\n'
 	printf '\nA reboot is required before installation can continue.\n'
 	printf 'Rebooting now. Run ./install.sh again after the Pi is back.\n'
 	sudo reboot
 	exit 0
+fi
+
+sudo modprobe i2c-dev || true
+
+if [[ ! -e /dev/i2c-11 ]]; then
+	printf '\nERROR: boot configuration is correct, but /dev/i2c-11 is still unavailable.\n' >&2
+	printf 'Check the Raspberry Pi model, kernel and Device Tree configuration.\n' >&2
+	exit 1
 fi
 
 printf 'Camera I2C bus found: /dev/i2c-11\n'
