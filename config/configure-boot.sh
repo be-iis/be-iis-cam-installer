@@ -51,8 +51,28 @@ enable_dtparam()
 	fi
 }
 
+set_camera_auto_detect_off()
+{
+	if grep -Eq '^[[:space:]]*camera_auto_detect=1([[:space:]]|$)' "$boot_config"; then
+		ensure_backup
+		sed -i -E \
+			's/^[[:space:]]*camera_auto_detect=1([[:space:]]*)$/camera_auto_detect=0/' \
+			"$boot_config"
+		printf 'Disabled Raspberry Pi camera auto-detection in %s\n' "$boot_config"
+		changed=1
+	elif ! grep -Eq '^[[:space:]]*camera_auto_detect=0([[:space:]]|$)' "$boot_config"; then
+		ensure_backup
+		printf 'camera_auto_detect=0\n' >> "$boot_config"
+		printf 'Added camera_auto_detect=0 to %s\n' "$boot_config"
+		changed=1
+	else
+		printf 'camera_auto_detect=0 is already present.\n'
+	fi
+}
+
 enable_dtparam i2c_arm
 enable_dtparam i2c_csi_dsi
+set_camera_auto_detect_off
 
 install -D -m 0644 "$script_dir/be-iis-camera-modules.conf" \
 	/etc/modules-load.d/be-iis-camera.conf
@@ -61,6 +81,8 @@ printf 'Installed /etc/modules-load.d/be-iis-camera.conf\n'
 
 if [[ "$changed" -eq 1 ]]; then
 	printf 'Boot configuration changed; reboot required.\n'
+	printf 'BE_IIS_REBOOT_REQUIRED=1\n'
 else
-	printf 'Boot configuration already contains the required I2C settings.\n'
+	printf 'Boot configuration is already correct for the GMSL camera setup.\n'
+	printf 'BE_IIS_REBOOT_REQUIRED=0\n'
 fi
