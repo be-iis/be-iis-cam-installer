@@ -7,18 +7,24 @@ performance qualification and safety requirements.
 
 ## For people
 
-First initialise both camera links:
+First prepare both camera links and video pipelines:
 
 ```bash
 make unoverlay
-make cameras-a-b
-make a-b
+make prepare-a-b
+make pipeline-a-b
 ```
 
 ### HDMI preview on the Pi
 
 Shows camera 0 on the left and camera 1 on the right on a directly connected
 800x480 HDMI display:
+
+```bash
+make video-dual
+```
+
+Equivalent direct command:
 
 ```bash
 python3 examples/dual-hdmi-preview/dual_preview.py
@@ -46,6 +52,8 @@ Then run the receiver command shown in
 [`../dual-pc-preview/README.md`](../dual-pc-preview/README.md) on the PC.
 
 ## Dependencies
+
+The normal `./install.sh` installs these dependencies. For a manual install:
 
 ```bash
 sudo apt install python3-gi python3-gst-1.0 \
