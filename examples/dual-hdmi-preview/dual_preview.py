@@ -111,7 +111,7 @@ def main():
         f"sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos={PREVIEW_Y} "
         f"! video/x-raw,width={DISPLAY_WIDTH},height={DISPLAY_HEIGHT},"
         "pixel-aspect-ratio=1/1 "
-        "! videoconvert ! kmssink driver-name=vc4-drm",
+        "! videoconvert ! kmssink driver-name=vc4",
     ))
     pipeline = Gst.parse_launch(desc)
     loop = GLib.MainLoop()
