@@ -8,7 +8,6 @@ import argparse
 import pathlib
 import subprocess
 import sys
-import tempfile
 
 import cv2
 import numpy as np
@@ -17,12 +16,11 @@ WIDTH, HEIGHT = 1024, 576
 
 
 def capture(camera: int, filename: pathlib.Path) -> None:
-    command = [
+    subprocess.run([
         "rpicam-still", "--camera", str(camera), "--immediate", "--nopreview",
         "--width", str(WIDTH), "--height", str(HEIGHT), "--encoding", "png",
         "--timeout", "1000", "--output", str(filename),
-    ]
-    subprocess.run(command, check=True)
+    ], check=True)
 
 
 def main() -> None:
@@ -35,6 +33,9 @@ def main() -> None:
                         help="number of successful image pairs to collect")
     parser.add_argument("--output", type=pathlib.Path,
                         default=pathlib.Path("stereo_calibration.npz"))
+    parser.add_argument("--captures", type=pathlib.Path,
+                        default=pathlib.Path("calibration-captures"),
+                        help="directory that keeps every captured image pair")
     args = parser.parse_args()
 
     try:
@@ -48,40 +49,47 @@ def main() -> None:
 
     found_objects, corners0, corners1 = [], [], []
     criteria = (cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 50, 1e-4)
+    args.captures.mkdir(parents=True, exist_ok=True)
 
     print("Stereo calibration")
-    print(f"Chessboard: {cols}x{rows} inner corners, {args.square_mm:g} mm squares")
+    print(f"Chessboard: {cols}x{rows} INNER corners, {args.square_mm:g} mm squares")
+    print(f"Every image pair is retained in: {args.captures}/")
     print("Place the board in view of BOTH cameras. Use different distances,")
     print("heights and tilts. Avoid placing it only in the image centre.\n")
 
-    with tempfile.TemporaryDirectory(prefix="beiis-stereo-") as temp:
-        tempdir = pathlib.Path(temp)
-        while len(found_objects) < args.pairs:
-            index = len(found_objects) + 1
-            input(f"[{index}/{args.pairs}] Position board and press Enter to capture...")
-            image0 = tempdir / "camera0.png"
-            image1 = tempdir / "camera1.png"
-            try:
-                capture(0, image0)
-                capture(1, image1)
-            except subprocess.CalledProcessError as error:
-                print(f"Capture failed: {error}", file=sys.stderr)
-                continue
+    attempt = 0
+    while len(found_objects) < args.pairs:
+        index = len(found_objects) + 1
+        input(f"[{index}/{args.pairs}] Position board and press Enter to capture...")
+        attempt += 1
+        image0 = args.captures / f"{attempt:03d}-camera0.png"
+        image1 = args.captures / f"{attempt:03d}-camera1.png"
+        try:
+            capture(0, image0)
+            capture(1, image1)
+        except subprocess.CalledProcessError as error:
+            print(f"Capture failed: {error}", file=sys.stderr)
+            continue
 
-            gray0 = cv2.imread(str(image0), cv2.IMREAD_GRAYSCALE)
-            gray1 = cv2.imread(str(image1), cv2.IMREAD_GRAYSCALE)
-            ok0, points0 = cv2.findChessboardCornersSB(gray0, (cols, rows))
-            ok1, points1 = cv2.findChessboardCornersSB(gray1, (cols, rows))
-            if not (ok0 and ok1):
-                print("Chessboard was not found in both pictures; try again.")
-                continue
+        gray0 = cv2.imread(str(image0), cv2.IMREAD_GRAYSCALE)
+        gray1 = cv2.imread(str(image1), cv2.IMREAD_GRAYSCALE)
+        ok0, points0 = cv2.findChessboardCornersSB(gray0, (cols, rows))
+        ok1, points1 = cv2.findChessboardCornersSB(gray1, (cols, rows))
+        if not (ok0 and ok1):
+            absent = []
+            if not ok0:
+                absent.append("camera 0")
+            if not ok1:
+                absent.append("camera 1")
+            print(f"Chessboard not found in {', '.join(absent)}; try again.")
+            continue
 
-            points0 = cv2.cornerSubPix(gray0, points0, (11, 11), (-1, -1), criteria)
-            points1 = cv2.cornerSubPix(gray1, points1, (11, 11), (-1, -1), criteria)
-            found_objects.append(object_points.copy())
-            corners0.append(points0)
-            corners1.append(points1)
-            print("  accepted")
+        points0 = cv2.cornerSubPix(gray0, points0, (11, 11), (-1, -1), criteria)
+        points1 = cv2.cornerSubPix(gray1, points1, (11, 11), (-1, -1), criteria)
+        found_objects.append(object_points.copy())
+        corners0.append(points0)
+        corners1.append(points1)
+        print("  accepted")
 
     _, matrix0, distortion0, _, _ = cv2.calibrateCamera(
         found_objects, corners0, (WIDTH, HEIGHT), None, None)
@@ -91,7 +99,7 @@ def main() -> None:
         found_objects, corners0, corners1, matrix0, distortion0, matrix1,
         distortion1, (WIDTH, HEIGHT), flags=cv2.CALIB_FIX_INTRINSIC,
         criteria=(cv2.TERM_CRITERIA_EPS + cv2.TERM_CRITERIA_MAX_ITER, 100, 1e-5))
-    rect0, rect1, proj0, proj1, q, _, _ = cv2.stereoRectify(
+    rect0, rect1, proj0, proj1, _, _, _ = cv2.stereoRectify(
         matrix0, distortion0, matrix1, distortion1, (WIDTH, HEIGHT),
         rotation, translation, flags=cv2.CALIB_ZERO_DISPARITY, alpha=0)
     map0x, map0y = cv2.initUndistortRectifyMap(
