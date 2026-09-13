@@ -2,21 +2,19 @@
 #
 # Manual Link-B I2C initialisation.
 #
-# This is the control sequence that was verified on the physical Link-B
-# connector: Pi I2C -> MAX96716A -> MAX96717 -> IMX708.
+# Configures only MAX96716A Link B for 6 Gbit/s / Coax / Tunnel,
+# selects physical Link B, then configures the remote MAX96717 and IMX708 alias.
 #
-# It configures reverse I2C, camera clock/power/reset and alias:
-#     local 0x53 -> remote IMX708 0x1a
+# No DigiPot handling is performed here. Legacy DigiPot hardware can be
+# configured separately with tools/set-gmsl-digipot.sh.
 #
-# It does not load an overlay, bind a Linux driver, configure CSI, or stream.
+# No overlay, Linux camera driver, CSI/video stream, or media graph is configured.
 #
 set -Eeuo pipefail
 
 I2C_BUS="${I2C_BUS:-11}"
 DES_ADDR="${DES_ADDR:-0x28}"
 SER_ADDR="${SER_ADDR:-0x40}"
-PADDING_ADDR="${PADDING_ADDR:-0x51}"
-PADDING_VALUE="${PADDING_VALUE:-0xae}"
 SENSOR_ALIAS="${SENSOR_ALIAS:-0x53}"
 SENSOR_REMOTE="${SENSOR_REMOTE:-0x1a}"
 
@@ -28,11 +26,70 @@ write_reg() {
 		"0x${reg:0:2}" "0x${reg:2:2}" "$value"
 }
 
+read_reg() {
+	local address="$1" reg="$2"
+	i2ctransfer -f -y "$I2C_BUS" "w2@${address}" \
+		"0x${reg:0:2}" "0x${reg:2:2}" r1
+}
+
 read_id() {
 	local address="$1" reg="$2"
 	i2ctransfer -f -y "$I2C_BUS" "w2@${address}" \
 		"0x${reg:0:2}" "0x${reg:2:2}" r2
 }
+
+update_reg_bits() {
+	local reg="$1" mask="$2" value="$3"
+	local current_hex current next
+
+	current_hex="$(read_reg "$DES_ADDR" "$reg")"
+	current=$((current_hex))
+	next=$(((current & ~mask) | (value & mask)))
+	write_reg "$DES_ADDR" "$reg" "$(printf '0x%02x' "$next")"
+}
+
+rate_name() {
+	case $(($1 & 0x03)) in
+		1) printf '3 Gbit/s' ;;
+		2) printf '6 Gbit/s' ;;
+		*) printf 'unknown' ;;
+	esac
+}
+
+cable_name() {
+	if (( $1 & 0x04 )); then
+		printf 'Coax'
+	else
+		printf 'Twisted Pair / STP'
+	fi
+}
+
+mode_name() {
+	if (( $1 & 0x01 )); then
+		printf 'Tunnel'
+	else
+		printf 'Pixel'
+	fi
+}
+
+print_des_state() {
+	local prefix="$1"
+	local rate_hex cable_hex mode_hex
+	local rate cable mode
+
+	rate_hex="$(read_reg "$DES_ADDR" 0004)"
+	cable_hex="$(read_reg "$DES_ADDR" 0011)"
+	mode_hex="$(read_reg "$DES_ADDR" 04b4)"
+
+	rate=$((rate_hex))
+	cable=$((cable_hex))
+	mode=$((mode_hex))
+
+	printf '%s Link B: %s | %s | %s  [0x0004=%s 0x0011=%s 0x04b4=%s]\n' \
+		"$prefix" "$(rate_name "$rate")" "$(cable_name "$cable")" \
+		"$(mode_name "$mode")" "$rate_hex" "$cable_hex" "$mode_hex"
+}
+
 wait_for_serializer() {
 	local id="" attempt
 	for attempt in {1..30}; do
@@ -53,11 +110,16 @@ main() {
 	modprobe i2c-dev
 	[[ -e "/dev/i2c-${I2C_BUS}" ]] || die "/dev/i2c-${I2C_BUS} does not exist."
 
-	echo '==> Select physical Link B for reverse I2C'
-	i2ctransfer -f -y "$I2C_BUS" "w2@${PADDING_ADDR}" 0x01 "$PADDING_VALUE"
-	write_reg "$DES_ADDR" 0001 0x02
-	write_reg "$DES_ADDR" 0011 0x0b
-	write_reg "$DES_ADDR" 0010 0x31
+	echo '==> Configure MAX96716A Link B'
+	print_des_state 'ALT:'
+	update_reg_bits 0004 0x03 0x02   # Link B: 6 Gbit/s
+	update_reg_bits 0011 0x04 0x04   # Link B: Coax
+	update_reg_bits 04b4 0x01 0x01   # Pipe B/Z: Tunnel
+	update_reg_bits 0f00 0x03 0x02   # Enable/select Link B
+	update_reg_bits 0010 0x33 0x32   # AUTO_LINK + Link B + one-shot reset
+	sleep 0.2
+	print_des_state 'NEU:'
+
 	wait_for_serializer
 
 	echo '==> Configure Link-B IMX708 clock, power and reset'
@@ -77,7 +139,6 @@ main() {
 	write_reg "$SER_ADDR" 0043 "$(printf '0x%02x' "$((SENSOR_REMOTE << 1))")"
 	write_reg "$SER_ADDR" 0044 0x00
 	write_reg "$SER_ADDR" 0045 0x00
-
 
 	sleep 0.1
 	sensor_id="$(read_id "$SENSOR_ALIAS" 0016 2>/dev/null || true)"
