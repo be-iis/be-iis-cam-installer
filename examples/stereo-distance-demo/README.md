@@ -51,6 +51,19 @@ For another chessboard, specify the real values, for example:
 python3 calibrate.py --corners 7x5 --square-mm 30
 ```
 
+## Quick mode without calibration
+
+For a first display test, calibration may be skipped. Measure the horizontal
+distance between the two lens centres and pass it in millimetres:
+
+```bash
+python3 stereo_distance_demo.py --baseline-mm 120
+```
+
+This mode assumes parallel cameras and a nominal IMX708 field of view. The
+result is marked with `~` and is suitable only for a visual demonstration.
+Use the calibration above before quoting a measurement accuracy.
+
 ## 3. Run the HDMI demo
 
 ```bash
