@@ -19,35 +19,48 @@ else
 fi
 
 changed=0
+backup=""
 
-if grep -Eq '^[[:space:]]*dtparam=i2c_arm=off([[:space:]]|$)' "$boot_config"; then
-	backup="${boot_config}.be-iis-backup-$(date +%Y%m%d-%H%M%S)"
-	cp -a "$boot_config" "$backup"
-	sed -i -E \
-		's/^[[:space:]]*dtparam=i2c_arm=off([[:space:]]*)$/dtparam=i2c_arm=on/' \
-		"$boot_config"
-	printf 'Backup: %s\n' "$backup"
-	changed=1
-elif ! grep -Eq '^[[:space:]]*dtparam=i2c_arm=on([[:space:]]|$)' "$boot_config"; then
-	backup="${boot_config}.be-iis-backup-$(date +%Y%m%d-%H%M%S)"
-	cp -a "$boot_config" "$backup"
-	{
-		printf '\n# BE-IIS camera support\n'
-		printf 'dtparam=i2c_arm=on\n'
-	} >> "$boot_config"
-	printf 'Backup: %s\n' "$backup"
-	changed=1
-fi
+ensure_backup()
+{
+	if [[ -z "$backup" ]]; then
+		backup="${boot_config}.be-iis-backup-$(date +%Y%m%d-%H%M%S)"
+		cp -a "$boot_config" "$backup"
+		printf 'Backup: %s\n' "$backup"
+	fi
+}
 
+enable_dtparam()
+{
+	local name="$1"
+
+	if grep -Eq "^[[:space:]]*dtparam=${name}=off([[:space:]]|$)" "$boot_config"; then
+		ensure_backup
+		sed -i -E \
+			"s/^[[:space:]]*dtparam=${name}=off([[:space:]]*)$/dtparam=${name}=on/" \
+			"$boot_config"
+		printf 'Enabled dtparam=%s=on in %s\n' "$name" "$boot_config"
+		changed=1
+	elif ! grep -Eq "^[[:space:]]*dtparam=${name}=on([[:space:]]|$)" "$boot_config"; then
+		ensure_backup
+		printf 'dtparam=%s=on\n' "$name" >> "$boot_config"
+		printf 'Added dtparam=%s=on to %s\n' "$name" "$boot_config"
+		changed=1
+	else
+		printf 'dtparam=%s=on is already present.\n' "$name"
+	fi
+}
+
+enable_dtparam i2c_arm
+enable_dtparam i2c_csi_dsi
 
 install -D -m 0644 "$script_dir/be-iis-camera-modules.conf" \
 	/etc/modules-load.d/be-iis-camera.conf
 
-if [[ "$changed" -eq 1 ]]; then
-	printf 'Enabled I2C in %s\n' "$boot_config"
-else
-	printf 'I2C is already enabled in %s\n' "$boot_config"
-fi
-
 printf 'Installed /etc/modules-load.d/be-iis-camera.conf\n'
-printf 'No reboot was performed.\n'
+
+if [[ "$changed" -eq 1 ]]; then
+	printf 'Boot configuration changed; reboot required.\n'
+else
+	printf 'Boot configuration already contains the required I2C settings.\n'
+fi
