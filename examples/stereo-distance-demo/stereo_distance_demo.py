@@ -58,12 +58,23 @@ def newest(frames):
 
 
 class StereoDemo:
-    def __init__(self, calibration_path):
-        data = np.load(calibration_path)
-        self.map0x, self.map0y = data["map0x"], data["map0y"]
-        self.map1x, self.map1y = data["map1x"], data["map1y"]
-        self.focal_px = float(data["focal_px"])
-        self.baseline_m = float(data["baseline_m"])
+    def __init__(self, calibration_path, baseline_mm):
+        self.calibrated = calibration_path is not None
+        if calibration_path:
+            data = np.load(calibration_path)
+            self.map0x, self.map0y = data["map0x"], data["map0y"]
+            self.map1x, self.map1y = data["map1x"], data["map1y"]
+            self.focal_px = float(data["focal_px"])
+            self.baseline_m = float(data["baseline_m"])
+        else:
+            # Quick demonstration only: assumes cameras are parallel and uses
+            # IMX708's approximate 66 degree horizontal field of view.
+            grid_x, grid_y = np.meshgrid(
+                np.arange(WIDTH, dtype=np.float32), np.arange(HEIGHT, dtype=np.float32))
+            self.map0x = self.map1x = grid_x
+            self.map0y = self.map1y = grid_y
+            self.focal_px = WIDTH / (2.0 * np.tan(np.deg2rad(33.0)))
+            self.baseline_m = baseline_mm / 1000.0
         self.matcher = cv2.StereoSGBM_create(
             minDisparity=0, numDisparities=96, blockSize=7,
             P1=8 * 3 * 7 * 7, P2=32 * 3 * 7 * 7,
@@ -116,7 +127,8 @@ class StereoDemo:
         cv2.line(canvas, (WIDTH // 2, 0), (WIDTH // 2, HEIGHT // 2), (255, 255, 255), 1)
         cv2.putText(canvas, "BE-IIS  |  GMSL2 Stereo Vision", (30, 345),
                     cv2.FONT_HERSHEY_SIMPLEX, 0.9, (220, 220, 220), 2, cv2.LINE_AA)
-        label = "Entfernung: --" if self.distance_m is None else f"Entfernung: {self.distance_m:.2f} m"
+        prefix = "" if self.calibrated else "~ "
+        label = "Entfernung: --" if self.distance_m is None else f"{prefix}Entfernung: {self.distance_m:.2f} m"
         cv2.putText(canvas, label, (30, 455), cv2.FONT_HERSHEY_DUPLEX, 2.0,
                     (0, 220, 255), 3, cv2.LINE_AA)
         cv2.putText(canvas, "Objekt auf das Kreuz halten", (30, 515),
@@ -126,10 +138,13 @@ class StereoDemo:
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--calibration", default="stereo_calibration.npz")
+    parser.add_argument("--calibration", default=None,
+                        help="stereo_calibration.npz from calibrate.py")
+    parser.add_argument("--baseline-mm", type=float, default=120.0,
+                        help="camera-centre spacing for uncalibrated quick mode")
     args = parser.parse_args()
     try:
-        demo = StereoDemo(args.calibration)
+        demo = StereoDemo(args.calibration, args.baseline_mm)
     except (OSError, KeyError) as error:
         sys.exit(f"Calibration file cannot be loaded: {error}")
 
