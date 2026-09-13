@@ -154,7 +154,7 @@ def main():
         "caps=video/x-raw,format=BGR,width=1024,height=576,framerate=30/1 "
         "! queue max-size-buffers=2 leaky=downstream ! videoconvert ! videoscale "
         "! video/x-raw,width=800,height=480,pixel-aspect-ratio=1/1 "
-        "! kmssink driver-name=vc4-drm")
+        "! kmssink")
     appsrc = pipeline.get_by_name("display")
     loop = GLib.MainLoop()
     captures = [capture(0), capture(1)]
