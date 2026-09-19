@@ -106,8 +106,10 @@ configure_serializer_and_aliases() {
   echo "DW9817 Link-$label via alias $focus_alias, status: $focus_status"
 }
 
-echo "==> Set known Link-A 2K padding value"
-sudo i2ctransfer -f -y "$I2C_BUS" w2@"$POT_ADDR" 0x01 "$POT_A_VALUE"
+# Rev. B has no external DigiPot. The MAX96716A link configuration below is
+# applied through registers, so no padding value is written at power-up.
+# echo "==> Set known Link-A 2K padding value"
+# sudo i2ctransfer -f -y "$I2C_BUS" w2@"$POT_ADDR" 0x01 "$POT_A_VALUE"
 
 echo "==> Set both MAX96716A links to GMSL2 6 Gbit/s"
 update_des_bits 0001 0x03 0x02
