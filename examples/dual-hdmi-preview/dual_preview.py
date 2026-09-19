@@ -42,7 +42,7 @@ def branch(name, label_name, pad, show_label, preview_height=PREVIEW_HEIGHT):
     label = (
         f"! videobox bottom=-{LABEL_HEIGHT} "
         f"! textoverlay name={label_name} text=\"\" valignment=bottom "
-        "halignment=left font-desc=\"Sans 16\" shaded-background=true "
+        "halignment=left font-desc=\"Sans 16\" shaded-background=true wait-text=false "
         if show_label else ""
     )
     return (
