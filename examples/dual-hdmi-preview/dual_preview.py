@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 """Dual camera HDMI preview — example implementation only."""
+import argparse
 import queue
 import signal
 import subprocess
@@ -14,9 +15,15 @@ from gi.repository import GLib, Gst
 
 DISPLAY_WIDTH, DISPLAY_HEIGHT = 800, 480
 PREVIEW_WIDTH, PREVIEW_HEIGHT = 400, 225
-PREVIEW_Y = (DISPLAY_HEIGHT - PREVIEW_HEIGHT) // 2
+LABEL_HEIGHT = 32
+PREVIEW_Y = (DISPLAY_HEIGHT - PREVIEW_HEIGHT - LABEL_HEIGHT) // 2
 CAPTURE_WIDTH, CAPTURE_HEIGHT, FRAMERATE = 1024, 576, 30
 FRAME_SIZE = CAPTURE_WIDTH * CAPTURE_HEIGHT * 3 // 2
+INA226_BUS = 11
+INA226_SHUNT_MOHM = 10
+
+# Camera 0 is IMX708@0x53 (Link B); camera 1 is @0x52 (Link A).
+CAMERA_INA = (("Link B", "0x45"), ("Link A", "0x41"))
 
 
 def capture(camera):
@@ -31,15 +38,21 @@ def capture(camera):
     )
 
 
-def branch(name, pad, preview_height=PREVIEW_HEIGHT):
+def branch(name, label_name, pad, show_label, preview_height=PREVIEW_HEIGHT):
+    label = (
+        f"! videobox bottom=-{LABEL_HEIGHT} "
+        f"! textoverlay name={label_name} text=\"\" valignment=bottom "
+        "halignment=left font-desc=\"Sans 16\" shaded-background=true "
+        if show_label else ""
+    )
     return (
         f"appsrc name={name} is-live=true block=true do-timestamp=true "
         f"format=time "
         f"! rawvideoparse format=i420 width={CAPTURE_WIDTH} "
         f"height={CAPTURE_HEIGHT} framerate={FRAMERATE}/1 "
-        f"! videoconvert ! videoscale "
+        f"! videoconvert ! videoflip method=rotate-180 ! videoscale "
         f"! video/x-raw,width={PREVIEW_WIDTH},height={preview_height},"
-        f"pixel-aspect-ratio=1/1 "
+        f"pixel-aspect-ratio=1/1 {label}"
         f"! queue max-size-buffers=2 leaky=downstream ! compositor.{pad}"
     )
 
@@ -101,11 +114,45 @@ def start_captures(pipeline):
     return captures
 
 
+def read_ina_u16(address, register):
+    """Read one INA226 16-bit register using the raw-I2C board interface."""
+    result = subprocess.run(
+        ["i2ctransfer", "-f", "-y", str(INA226_BUS),
+         f"w1@{address}", f"0x{register:02x}", "r2"],
+        check=True, text=True, capture_output=True,
+    )
+    values = result.stdout.split()
+    if len(values) != 2:
+        raise RuntimeError(f"unexpected INA226 response: {result.stdout!r}")
+    return (int(values[0], 16) << 8) | int(values[1], 16)
+
+
+def ina_label(link, address):
+    """Return a compact voltage/current readout for one camera power path."""
+    try:
+        bus_counts = read_ina_u16(address, 0x02)
+        shunt_counts = read_ina_u16(address, 0x01)
+        if shunt_counts & 0x8000:
+            shunt_counts -= 0x10000
+        voltage_v = bus_counts * 0.00125
+        current_ma = shunt_counts * 0.25
+        return f"{link}: {voltage_v:.3f} V  {current_ma:.2f} mA"
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+        return f"{link}: INA226 read error ({error})"
+
+
 def main():
+    parser = argparse.ArgumentParser(description="Dual GMSL2 HDMI preview")
+    parser.add_argument(
+        "--ina", action="store_true",
+        help="show INA226 voltage/current below each camera (run with sudo)",
+    )
+    args = parser.parse_args()
+
     Gst.init(None)
     desc = " ".join((
-        branch("camera0", "sink_0"),
-        branch("camera1", "sink_1"),
+        branch("camera0", "label0", "sink_0", args.ina),
+        branch("camera1", "label1", "sink_1", args.ina),
         "compositor name=compositor "
         f"sink_0::xpos=0 sink_0::ypos={PREVIEW_Y} "
         f"sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos={PREVIEW_Y} "
@@ -130,6 +177,17 @@ def main():
     signal.signal(signal.SIGINT, lambda *_: loop.quit())
     pipeline.set_state(Gst.State.PLAYING)
     captures = start_captures(pipeline)
+
+    if args.ina:
+        labels = [pipeline.get_by_name("label0"), pipeline.get_by_name("label1")]
+
+        def update_ina_labels():
+            for label, (link, address) in zip(labels, CAMERA_INA):
+                label.set_property("text", ina_label(link, address))
+            return True
+
+        update_ina_labels()
+        GLib.timeout_add(1000, update_ina_labels)
 
     try:
         loop.run()
