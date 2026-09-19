@@ -32,6 +32,16 @@ python3 examples/dual-hdmi-preview/dual_preview.py
 
 Stop with `Ctrl+C`.
 
+Both camera images are rotated 180°. To show the live camera-supply readout
+directly below the corresponding image, add `--ina`:
+
+```bash
+sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina
+```
+
+Camera 0 is physically Link B (INA226 `0x45`); camera 1 is Link A
+(INA226 `0x41`). The readout uses the fitted 10mOhm shunts.
+
 ### Stereo distance measurement
 
 The headless stereo demonstration overlays the distance at a fixed crosshair.
