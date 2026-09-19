@@ -33,7 +33,7 @@ python3 examples/dual-hdmi-preview/dual_preview.py
 Stop with `Ctrl+C`.
 
 Both camera images are rotated 180°. To show the live camera-supply readout
-directly below the corresponding image, add `--ina`:
+at the lower edge of the corresponding image, add `--ina`:
 
 ```bash
 sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina
