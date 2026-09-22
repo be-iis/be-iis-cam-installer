@@ -63,12 +63,40 @@ when a camera stops delivering frames.
 | INA | Voltage/current with `--ina`, or read error / off |
 | Last message | Tail of the most recent warning/error; full camera logs remain on stderr with link prefixes |
 
-These are **host-side observations**, not GMSL CRC/error counters. RX fps is
+The fields above are **host-side observations**. Optional hardware monitoring
+is described below. RX fps is
 neither a sensor timestamp measurement nor the HDMI display rate. RX gaps can
 also result from host scheduling or backpressure. Preview skip does not count
 frames discarded later inside GStreamer. Small image corruption without a log
 message or timing change is not detected; zero errors does not prove a clean
 physical link. Initial camera startup delay is excluded from RX gaps.
+
+### Optional hardware diagnostics
+
+```bash
+sudo python3 examples/dual-hdmi-preview/dual_preview.py --ina --gmsl
+```
+
+The MAX96716A is polled in the background. `--gmsl-bus` defaults to 11;
+`--gmsl-address` defaults to `0x28`. One cooperating monitor is allowed per device.
+Do not run other register readers concurrently: these reads consume flags.
+
+The [MAX96716A data sheet](https://www.analog.com/media/en/technical-documentation/data-sheets/max96716a.pdf)
+documents tunnel status at `0x0442`/`0x0482` (pages 219/239) and decoding
+counters at `0x0022`/`0x0023` (page 124). CRC, corrected/uncorrectable ECC and
+sync-loss flags clear on read. The display accumulates **flagged polling
+intervals**, not individual corrupt packets. `DEC` sums consumed decoding counts;
+resets, saturation and other readers can cause undercounting.
+
+Initial reads establish a baseline; pre-existing errors are excluded. Counters
+restart with the application. I2C failures show unavailable/stale, not zero.
+Routing is checked against this repository's dual-tunnel setup before consuming
+status. Other mappings are rejected. No link configuration registers are written
+and no serializer switching is performed.
+
+Tunnel CRC covers the transported CSI data, not a universal GMSL packet CRC
+counter. A hit does not uniquely identify a cable fault. Hardware measurements
+still need validation on the Pi. Software log errors remain a separate count.
 
 INA polling runs in a background thread with bounded subprocess timeouts, so
 I2C reads do not block the GLib frame delivery loop. A fatal GStreamer pipeline

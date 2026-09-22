@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Dual camera HDMI preview — example implementation only."""
 import argparse
+import fcntl
 import math
 import queue
 import re
@@ -55,6 +56,8 @@ class CameraStats:
         self.message = ""
         self.sensor = "pending"
         self.power = "INA: off"
+        self.hardware = "GMSL: off (--gmsl)"
+        self.hardware_detail = ""
         self.started = self.sample_time = time.monotonic()
         self.sample_frames = 0
 
@@ -117,7 +120,9 @@ class CameraStats:
                 f"RX gaps {self.gaps} | Last {self.last_gap_ms:.0f}ms | Age {age_text}",
                 f"Log errors {self.errors} | Warnings {self.warnings}",
                 self.power[:48],
-                (self.message[-48:] if self.message else "GMSL CRC: not monitored"),
+                self.hardware,
+                self.hardware_detail,
+                (self.message[-48:] if self.message else ""),
             ))
 
 
@@ -289,9 +294,86 @@ def poll_power(stats, stop):
         stop.wait(1)
 
 
+# MAX96716A data sheet: MIPI_TX2 (0x442/0x482), CNT0/1 (0x22/0x23).
+# Link/port mapping follows tools/bringup-gmsl-links-a-b.sh.
+GMSL_REGISTERS = {"Link A": (0x0442, 0x0022), "Link B": (0x0482, 0x0023)}
+
+
+def read_des_u8(bus, address, register):
+    result = subprocess.run(
+        ["i2ctransfer", "-f", "-y", str(bus), f"w2@0x{address:02x}",
+         f"0x{register >> 8:02x}", f"0x{register & 255:02x}", "r1"],
+        check=True, text=True, capture_output=True, timeout=0.5,
+    )
+    values = result.stdout.split()
+    if len(values) != 1 or not re.fullmatch(r"0x[0-9a-fA-F]{2}", values[0]):
+        raise RuntimeError(f"invalid register response at 0x{register:04x}")
+    return int(values[0], 16)
+
+
+class GmslMonitor:
+    """Accumulate read-to-clear observations without changing link configuration."""
+
+    def __init__(self, stats, bus=11, address=0x28):
+        self.stats, self.bus, self.address = stats, bus, address
+        self.totals = {s.link: dict(crc=0, corr=0, uncorr=0, sync=0, dec=0) for s in stats}
+        self.baselined = set()
+        self.io_errors = 0
+
+    def read(self, register):
+        return read_des_u8(self.bus, self.address, register)
+
+    def sample(self):
+        # Check routing before consuming per-port read-to-clear flags.
+        # Unsupported routing must never silently attribute CRCs to the wrong link.
+        if (self.read(0x0160) & 3 != 3 or self.read(0x0161) != 0x20
+                or self.read(0x0474) & 7 != 1 or self.read(0x04b4) & 7 != 7):
+            raise RuntimeError("unsupported tunnel routing")
+        for observer in self.stats:
+            status_reg, dec_reg = GMSL_REGISTERS[observer.link]
+            counts = self.totals[observer.link]
+            status = self.read(status_reg)
+            if status_reg in self.baselined:
+                for name, mask in (("crc", 0x20), ("uncorr", 0x10),
+                                   ("corr", 0x08), ("sync", 0x04)):
+                    counts[name] += bool(status & mask)
+            self.baselined.add(status_reg)
+            # Commit each consumed value immediately: a later failed I2C read
+            # must not discard flags already cleared by the successful read.
+            decoding = self.read(dec_reg)
+            if dec_reg in self.baselined:
+                counts["dec"] += decoding
+            self.baselined.add(dec_reg)
+            with observer.lock:
+                observer.hardware = (f"Tunnel CRC hits {counts['crc']} | DEC {counts['dec']}")
+                observer.hardware_detail = (
+                    f"ECC C/U {counts['corr']}/{counts['uncorr']} | Sync loss {counts['sync']}"
+                )
+
+    def poll(self, stop):
+        while not stop.is_set():
+            try:
+                self.sample()
+            except (OSError, RuntimeError, subprocess.SubprocessError) as error:
+                self.io_errors += 1
+                for observer in self.stats:
+                    with observer.lock:
+                        observer.hardware = f"GMSL unavailable/stale | IO {self.io_errors}"
+                        observer.hardware_detail = str(error)[-48:]
+                if self.io_errors == 1:
+                    print(f"GMSL monitor: {error}", file=sys.stderr)
+            stop.wait(1)
+
+
 def main():
     global CAPTURE_WIDTH, CAPTURE_HEIGHT, FRAMERATE, FRAME_SIZE, SENSOR_MODE
     parser = argparse.ArgumentParser(description="Dual GMSL2 HDMI preview")
+    parser.add_argument("--gmsl", action="store_true",
+                        help="monitor MAX96716A tunnel CRC/ECC and decoding errors (read-to-clear)")
+    parser.add_argument("--gmsl-bus", type=int, default=11,
+                        help="MAX96716A I2C bus (default: 11)")
+    parser.add_argument("--gmsl-address", type=lambda value: int(value, 0), default=0x28,
+                        help="MAX96716A 7-bit I2C address (default: 0x28)")
     parser.add_argument("--width", type=int, default=1024,
                         help="capture output width, multiple of 32 (default: 1024)")
     parser.add_argument("--height", type=int, default=576,
@@ -318,6 +400,18 @@ def main():
         help="Link B (camera 0): auto or dioptres; overrides --lens-position",
     )
     args = parser.parse_args()
+    if args.gmsl_bus < 0 or not 0x08 <= args.gmsl_address <= 0x77:
+        parser.error("invalid GMSL I2C bus or 7-bit address")
+    gmsl_lock = None
+    if args.gmsl:
+        # Only one cooperating monitor may consume read-to-clear flags.
+        try:
+            gmsl_lock = open(f"/run/lock/beiis-gmsl-{args.gmsl_bus}-{args.gmsl_address:02x}.lock", "a")
+            fcntl.flock(gmsl_lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except OSError as error:
+            if gmsl_lock is not None:
+                gmsl_lock.close()
+            parser.error(f"cannot acquire GMSL monitor lock (run with sudo; one monitor only): {error}")
     if args.width <= 0 or args.width % 32:
         parser.error("--width must be a positive multiple of 32")
     if args.height <= 0 or args.height % 2:
@@ -382,6 +476,16 @@ def main():
         power_thread = threading.Thread(target=poll_power, args=(stats, stop_power), daemon=True)
         power_thread.start()
 
+    gmsl_thread = None
+    if args.gmsl:
+        for observer in stats:
+            observer.hardware = "GMSL: baselining..."
+        gmsl_thread = threading.Thread(
+            target=GmslMonitor(stats, args.gmsl_bus, args.gmsl_address).poll,
+            args=(stop_power,), daemon=True,
+        )
+        gmsl_thread.start()
+
     def update_status():
         for label, observer, process in zip(labels, stats, captures):
             label.set_property("text", observer.label(process))
@@ -396,6 +500,10 @@ def main():
         stop_power.set()
         if power_thread is not None:
             power_thread.join(timeout=3)
+        if gmsl_thread is not None:
+            gmsl_thread.join(timeout=5)
+        if gmsl_lock is not None:
+            gmsl_lock.close()
         pipeline.set_state(Gst.State.NULL)
         for process in captures:
             process.terminate()

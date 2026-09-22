@@ -99,5 +99,70 @@ class StatusTests(unittest.TestCase):
             self.assertEqual(popen.call_args.args[0][-2:], ['--autofocus-mode', 'continuous'])
 
 
+class GmslTests(unittest.TestCase):
+    def setUp(self):
+        self.stats = [preview.CameraStats('Link B'), preview.CameraStats('Link A')]
+        self.monitor = preview.GmslMonitor(self.stats)
+        self.registers = {0x160: 3, 0x161: 0x20, 0x474: 9, 0x4b4: 15,
+                          0x442: 0, 0x482: 0, 0x22: 0, 0x23: 0}
+        self.monitor.read = lambda reg: self.registers[reg]
+
+    def test_baseline_and_independent_totals(self):
+        self.registers[0x442] = 0x3c  # Historical flags must not count.
+        self.monitor.sample()
+        self.assertEqual(self.monitor.totals['Link A']['crc'], 0)
+        self.registers[0x442] = 0x20
+        self.registers[0x482] = 0x1c
+        self.registers[0x22] = 3
+        self.monitor.sample()
+        self.assertEqual(self.monitor.totals['Link A'],
+                         dict(crc=1, corr=0, uncorr=0, sync=0, dec=3))
+        self.assertEqual(self.monitor.totals['Link B'],
+                         dict(crc=0, corr=1, uncorr=1, sync=1, dec=0))
+        self.registers.update({0x442: 0, 0x482: 0, 0x22: 0})
+        self.monitor.sample()
+        self.assertEqual(self.monitor.totals['Link A']['crc'], 1)
+
+    def test_unsupported_mapping_does_not_consume_status(self):
+        self.registers[0x161] = 0x32
+        reads = []
+        def read(reg):
+            reads.append(reg)
+            return self.registers[reg]
+        self.monitor.read = read
+        with self.assertRaisesRegex(RuntimeError, 'routing'):
+            self.monitor.sample()
+        self.assertNotIn(0x442, reads)
+        self.assertNotIn(0x482, reads)
+
+    def test_partial_failure_preserves_consumed_flag(self):
+        self.monitor.sample()
+        def read(reg):
+            if reg == 0x482:
+                return 0x20
+            if reg == 0x23:
+                raise OSError('I2C failed')
+            return self.registers[reg]
+        self.monitor.read = read
+        with self.assertRaises(OSError):
+            self.monitor.sample()
+        self.assertEqual(self.monitor.totals['Link B']['crc'], 1)
+
+    def test_i2c_transfer_uses_register_pointer_only(self):
+        with patch.object(preview.subprocess, 'run', return_value=Mock(stdout='0x20\n')) as run:
+            self.assertEqual(preview.read_des_u8(11, 0x28, 0x442), 0x20)
+            self.assertEqual(run.call_args.args[0],
+                             ['i2ctransfer', '-f', '-y', '11', 'w2@0x28', '0x04', '0x42', 'r1'])
+
+    def test_failed_read_displays_unavailable(self):
+        self.monitor.read = Mock(side_effect=OSError('bus unavailable'))
+        stop = Mock()
+        stop.is_set.side_effect = [False, True]
+        with patch.object(preview.sys, 'stderr', io.StringIO()):
+            self.monitor.poll(stop)
+        for observer in self.stats:
+            self.assertIn('unavailable/stale', observer.hardware)
+
+
 if __name__ == '__main__':
     unittest.main()
