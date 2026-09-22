@@ -44,6 +44,21 @@ Camera 0 is physically Link B (INA226 `0x45`); camera 1 is Link A
 
 ### Optional manual focus
 
+Use `--focus-a` and `--focus-b` to control each physical link independently:
+
+```bash
+# Link A: continuous autofocus; Link B: fixed focus near 20 cm
+sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina --focus-a auto --focus-b 5
+
+# Link A: fixed far focus; Link B: continuous autofocus
+python3 examples/dual-hdmi-preview/dual_preview.py --focus-a 0 --focus-b auto
+```
+
+`auto` explicitly selects continuous autofocus. A number selects manual focus
+in dioptres. Link A is camera 1 (right); Link B is camera 0 (left).
+Each per-link option overrides `--lens-position` for that link. An omitted
+per-link option uses `--lens-position` if supplied, otherwise the camera default.
+
 Use `--lens-position` to set a fixed focus position for **both cameras**:
 
 ```bash
@@ -60,7 +75,7 @@ approximate and the supported range depends on the camera. Requires a camera
 with a controllable focus lens. Negative and non-finite values are rejected.
 Stop with `Ctrl+C` and restart with another value to change the fixed position.
 
-Omit `--lens-position` to preserve the existing camera default/autofocus
+Omit all focus options to preserve the existing camera default/autofocus
 behaviour. Existing service commands need no changes. If a preview service is
 running, stop it before starting this example manually to free the cameras.
 

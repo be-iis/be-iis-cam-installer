@@ -26,6 +26,18 @@ INA226_SHUNT_MOHM = 10
 CAMERA_INA = (("Link B", "0x45"), ("Link A", "0x41"))
 
 
+def focus_value(value):
+    if value.lower() == "auto":
+        return "auto"
+    try:
+        position = float(value)
+    except ValueError:
+        raise argparse.ArgumentTypeError("use 'auto' or a non-negative number")
+    if not math.isfinite(position) or position < 0:
+        raise argparse.ArgumentTypeError("focus position must be finite and non-negative")
+    return position
+
+
 def capture(camera, lens_position=None):
     return subprocess.Popen(
         [
@@ -34,6 +46,7 @@ def capture(camera, lens_position=None):
             "--height", str(CAPTURE_HEIGHT), "--framerate", str(FRAMERATE),
             "--timeout", "0", "--output", "-",
         ] + (
+            ["--autofocus-mode", "continuous"] if lens_position == "auto" else
             ["--autofocus-mode", "manual", "--lens-position", str(lens_position)]
             if lens_position is not None else []
         ),
@@ -94,9 +107,13 @@ def push_frame(appsrc, data):
     return appsrc.emit("push-buffer", buffer) == Gst.FlowReturn.OK
 
 
-def start_captures(pipeline, lens_position=None):
+def start_captures(pipeline, lens_position=None, focus_a=None, focus_b=None):
     """Start both readers and inject frames from the GLib main thread."""
-    captures = [capture(0, lens_position), capture(1, lens_position)]
+    # Physical Link B is camera 0; Link A is camera 1.
+    captures = [
+        capture(0, focus_b if focus_b is not None else lens_position),
+        capture(1, focus_a if focus_a is not None else lens_position),
+    ]
     frame_queues = [queue.Queue(maxsize=2), queue.Queue(maxsize=2)]
     sources = [
         (pipeline.get_by_name("camera0"), frame_queues[0]),
@@ -150,14 +167,19 @@ def main():
         help="show INA226 voltage/current below each camera (run with sudo)",
     )
     parser.add_argument(
-        "--lens-position", type=float, default=None,
-        help="manual focus for both cameras in dioptres "
+        "--lens-position", type=focus_value, default=None,
+        help="focus for both cameras: auto or dioptres "
              "(0=infinity, 5=approx. 20 cm); omitted: camera default",
     )
+    parser.add_argument(
+        "--focus-a", type=focus_value, default=None,
+        help="Link A (camera 1): auto or dioptres; overrides --lens-position",
+    )
+    parser.add_argument(
+        "--focus-b", type=focus_value, default=None,
+        help="Link B (camera 0): auto or dioptres; overrides --lens-position",
+    )
     args = parser.parse_args()
-    if args.lens_position is not None:
-        if not math.isfinite(args.lens_position) or args.lens_position < 0:
-            parser.error("--lens-position must be finite and non-negative")
 
     Gst.init(None)
     desc = " ".join((
@@ -186,7 +208,7 @@ def main():
     bus.connect("message", on_message)
     signal.signal(signal.SIGINT, lambda *_: loop.quit())
     pipeline.set_state(Gst.State.PLAYING)
-    captures = start_captures(pipeline, args.lens_position)
+    captures = start_captures(pipeline, args.lens_position, args.focus_a, args.focus_b)
 
     if args.ina:
         labels = [pipeline.get_by_name("label0"), pipeline.get_by_name("label1")]
