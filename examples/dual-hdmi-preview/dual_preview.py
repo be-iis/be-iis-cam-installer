@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Dual camera HDMI preview — example implementation only."""
 import argparse
+import math
 import queue
 import signal
 import subprocess
@@ -25,14 +26,17 @@ INA226_SHUNT_MOHM = 10
 CAMERA_INA = (("Link B", "0x45"), ("Link A", "0x41"))
 
 
-def capture(camera):
+def capture(camera, lens_position=None):
     return subprocess.Popen(
         [
             "rpicam-vid", "--camera", str(camera), "--nopreview",
             "--codec", "yuv420", "--width", str(CAPTURE_WIDTH),
             "--height", str(CAPTURE_HEIGHT), "--framerate", str(FRAMERATE),
             "--timeout", "0", "--output", "-",
-        ],
+        ] + (
+            ["--autofocus-mode", "manual", "--lens-position", str(lens_position)]
+            if lens_position is not None else []
+        ),
         stdout=subprocess.PIPE,
     )
 
@@ -90,9 +94,9 @@ def push_frame(appsrc, data):
     return appsrc.emit("push-buffer", buffer) == Gst.FlowReturn.OK
 
 
-def start_captures(pipeline):
+def start_captures(pipeline, lens_position=None):
     """Start both readers and inject frames from the GLib main thread."""
-    captures = [capture(0), capture(1)]
+    captures = [capture(0, lens_position), capture(1, lens_position)]
     frame_queues = [queue.Queue(maxsize=2), queue.Queue(maxsize=2)]
     sources = [
         (pipeline.get_by_name("camera0"), frame_queues[0]),
@@ -145,7 +149,15 @@ def main():
         "--ina", action="store_true",
         help="show INA226 voltage/current below each camera (run with sudo)",
     )
+    parser.add_argument(
+        "--lens-position", type=float, default=None,
+        help="manual focus for both cameras in dioptres "
+             "(0=infinity, 5=approx. 20 cm); omitted: camera default",
+    )
     args = parser.parse_args()
+    if args.lens_position is not None:
+        if not math.isfinite(args.lens_position) or args.lens_position < 0:
+            parser.error("--lens-position must be finite and non-negative")
 
     Gst.init(None)
     desc = " ".join((
@@ -174,7 +186,7 @@ def main():
     bus.connect("message", on_message)
     signal.signal(signal.SIGINT, lambda *_: loop.quit())
     pipeline.set_state(Gst.State.PLAYING)
-    captures = start_captures(pipeline)
+    captures = start_captures(pipeline, args.lens_position)
 
     if args.ina:
         labels = [pipeline.get_by_name("label0"), pipeline.get_by_name("label1")]

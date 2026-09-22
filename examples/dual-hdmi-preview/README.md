@@ -42,6 +42,28 @@ sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina
 Camera 0 is physically Link B (INA226 `0x45`); camera 1 is Link A
 (INA226 `0x41`). The readout uses the fitted 10mOhm shunts.
 
+### Optional manual focus
+
+Use `--lens-position` to set a fixed focus position for **both cameras**:
+
+```bash
+# Far focus (infinity)
+python3 examples/dual-hdmi-preview/dual_preview.py --lens-position 0
+
+# Near focus (approximately 20 cm), with supply readout
+sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina --lens-position 5
+```
+
+The option selects manual focus and passes the position to both `rpicam-vid`
+processes. Values are in dioptres (1 / distance in metres); distances are
+approximate and the supported range depends on the camera. Requires a camera
+with a controllable focus lens. Negative and non-finite values are rejected.
+Stop with `Ctrl+C` and restart with another value to change the fixed position.
+
+Omit `--lens-position` to preserve the existing camera default/autofocus
+behaviour. Existing service commands need no changes. If a preview service is
+running, stop it before starting this example manually to free the cameras.
+
 ### Stereo distance measurement
 
 The headless stereo demonstration overlays the distance at a fixed crosshair.
