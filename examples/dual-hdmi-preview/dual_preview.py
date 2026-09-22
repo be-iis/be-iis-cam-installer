@@ -3,6 +3,7 @@
 import argparse
 import math
 import queue
+import re
 import signal
 import subprocess
 import sys
@@ -19,6 +20,7 @@ PREVIEW_WIDTH, PREVIEW_HEIGHT = 400, 225
 PREVIEW_Y = (DISPLAY_HEIGHT - PREVIEW_HEIGHT) // 2
 CAPTURE_WIDTH, CAPTURE_HEIGHT, FRAMERATE = 1024, 576, 30
 FRAME_SIZE = CAPTURE_WIDTH * CAPTURE_HEIGHT * 3 // 2
+SENSOR_MODE = None
 INA226_BUS = 11
 INA226_SHUNT_MOHM = 10
 
@@ -45,7 +47,7 @@ def capture(camera, lens_position=None):
             "--codec", "yuv420", "--width", str(CAPTURE_WIDTH),
             "--height", str(CAPTURE_HEIGHT), "--framerate", str(FRAMERATE),
             "--timeout", "0", "--output", "-",
-        ] + (
+        ] + (["--mode", SENSOR_MODE] if SENSOR_MODE else []) + (
             ["--autofocus-mode", "continuous"] if lens_position == "auto" else
             ["--autofocus-mode", "manual", "--lens-position", str(lens_position)]
             if lens_position is not None else []
@@ -161,7 +163,16 @@ def ina_label(link, address):
 
 
 def main():
+    global CAPTURE_WIDTH, CAPTURE_HEIGHT, FRAMERATE, FRAME_SIZE, SENSOR_MODE
     parser = argparse.ArgumentParser(description="Dual GMSL2 HDMI preview")
+    parser.add_argument("--width", type=int, default=1024,
+                        help="capture output width, multiple of 32 (default: 1024)")
+    parser.add_argument("--height", type=int, default=576,
+                        help="capture output height, even (default: 576)")
+    parser.add_argument("--framerate", type=int, default=30,
+                        help="requested frames per second, positive integer (default: 30)")
+    parser.add_argument("--mode", default=None,
+                        help="sensor mode WIDTH:HEIGHT[:BITS[:P|U]]; omitted: automatic")
     parser.add_argument(
         "--ina", action="store_true",
         help="show INA226 voltage/current below each camera (run with sudo)",
@@ -180,6 +191,24 @@ def main():
         help="Link B (camera 0): auto or dioptres; overrides --lens-position",
     )
     args = parser.parse_args()
+    if args.width <= 0 or args.width % 32:
+        parser.error("--width must be a positive multiple of 32")
+    if args.height <= 0 or args.height % 2:
+        parser.error("--height must be positive and even")
+    if args.framerate <= 0:
+        parser.error("--framerate must be positive")
+    if args.mode is not None and not re.fullmatch(
+        r"[1-9][0-9]*:[1-9][0-9]*(?::[1-9][0-9]*(?::[PU])?)?", args.mode
+    ):
+        parser.error("--mode must be WIDTH:HEIGHT[:BITS[:P|U]]")
+
+    # Configure frame readers and GStreamer before any capture threads start.
+    CAPTURE_WIDTH, CAPTURE_HEIGHT = args.width, args.height
+    FRAMERATE, SENSOR_MODE = args.framerate, args.mode
+    FRAME_SIZE = CAPTURE_WIDTH * CAPTURE_HEIGHT * 3 // 2
+    print(f"Capture per camera: {CAPTURE_WIDTH}x{CAPTURE_HEIGHT}, "
+          f"{FRAMERATE} fps requested, {FRAME_SIZE} bytes/frame; "
+          f"sensor mode: {SENSOR_MODE or 'automatic'}", flush=True)
 
     Gst.init(None)
     desc = " ".join((

@@ -42,6 +42,38 @@ sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina
 Camera 0 is physically Link B (INA226 `0x45`); camera 1 is Link A
 (INA226 `0x41`). The readout uses the fitted 10mOhm shunts.
 
+### Capture resolution and sensor mode
+
+`--width`, `--height` and `--framerate` set the capture output for both cameras.
+Defaults remain 1024x576 at 30 fps. `--mode` separately requests the sensor mode
+in `WIDTH:HEIGHT[:BITS[:P|U]]` format; when omitted, rpicam selects it automatically.
+Check the rpicam startup log for the actual selected sensor mode.
+
+```bash
+# Full HD output, 2304x1296 sensor mode, 30 fps
+sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina \
+  --width 1920 --height 1080 --framerate 30 --mode 2304:1296:10
+
+# 2304x1296 output and sensor mode, 30 fps
+sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina \
+  --width 2304 --height 1296 --framerate 30 --mode 2304:1296:10
+
+# Full IMX708 resolution, initially request 10 fps
+sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina \
+  --width 4608 --height 2592 --framerate 10 --mode 4608:2592:10
+```
+
+These are hardware test configurations, not guaranteed dual-camera throughput.
+Higher resolutions increase CPU and memory bandwidth usage. The HDMI display
+remains 800x480 with two 400x225 previews; larger capture frames are downscaled.
+Focus options can be combined with any of these commands.
+
+For this raw I420 pipe example, output width must be a positive multiple of 32,
+height must be positive and even, and frame rate must be a positive integer.
+These restrictions keep frame boundaries and plane alignment predictable.
+Frame byte counts and GStreamer parser settings follow the requested output
+size. If rpicam adjusts the output dimensions, use dimensions it supports.
+
 ### Optional manual focus
 
 Use `--focus-a` and `--focus-b` to control each physical link independently:
@@ -114,8 +146,9 @@ Both cameras must be captured by two independent `rpicam-vid` processes.
 For this dual-camera setup, two `libcamerasrc` elements in one process led
 to a PiSP camera-frontend timeout.
 
-The camera process writes I420 frames at 1024x576 pixels. One frame is exactly
-884736 bytes. The Python reader therefore collects one complete frame before
+By default, the camera process writes I420 frames at 1024x576 pixels (884736
+bytes per frame). With custom dimensions, each frame is width * height * 3 / 2
+bytes. The Python reader therefore collects one complete frame before
 placing it in a short per-camera queue.
 
 The important detail is that the reader threads **do not call GStreamer**.
@@ -131,9 +164,10 @@ a discarded item is always a whole frame, never part of an image.
 
 - Keep two separate `rpicam-vid` processes; do not replace them with two
   `libcamerasrc` elements without validating the PiSP dual-camera case.
-- Capture format: I420, 1024x576, 30 fps, 884736 bytes/frame.
+- Capture format: I420; default 1024x576, 30 fps, 884736 bytes/frame.
+  The CLI configures dimensions, frame rate and frame size before threads start.
 - Preserve full-frame boundaries in the Python reader.
-- Use `rawvideoparse format=i420 width=1024 height=576 framerate=30/1`.
+- Use `rawvideoparse format=i420` with the configured width, height and frame rate.
   It reconstructs and timestamps complete raw video frames before conversion.
 - Feed `appsrc` from one serial GStreamer/GLib context. Reader threads may
   read camera pipes and enqueue immutable frame data only.
