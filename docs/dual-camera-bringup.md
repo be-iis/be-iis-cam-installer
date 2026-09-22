@@ -29,6 +29,13 @@ The targets do the following:
   and loads both IMX708 overlays.
 - a-b configures both serializers and both MAX96716A CSI outputs.
 
+Link initialization enables MAX96716A receiver adaptation (`AdaptEn`, bit 7)
+for each selected link: register `0x1403` for A and `0x1503` for B. Video
+configuration reapplies it after its link resets. The helper preserves the other
+register bits and prints the old and read-back values; a missing enable bit
+fails the command. Link rate and EOM settings are unchanged. This setting is
+reapplied on each initialization, not stored in nonvolatile memory.
+
 Check discovery and each stream:
 
 ~~~bash

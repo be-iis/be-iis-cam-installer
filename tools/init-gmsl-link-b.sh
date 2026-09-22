@@ -146,6 +146,10 @@ main() {
 		"$SENSOR_ALIAS" "${sensor_id:-unavailable}"
 	[[ "$sensor_id" == "0x07 0x08" ]] ||
 		die 'IMX708 is not reachable through Link-B alias.'
+  # Apply after link resets so the receiver adaptation is enabled at handoff.
+  sudo bash "$(dirname -- "${BASH_SOURCE[0]}")/enable-gmsl-rx-adaptation.sh" \
+    "$I2C_BUS" "$DES_ADDR" B
+
 }
 
 main "$@"

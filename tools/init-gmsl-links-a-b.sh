@@ -134,3 +134,7 @@ echo -n "IMX708 Link-B final alias $ALIAS_B: "
 read_id "$ALIAS_B"
 echo -n "DW9817 Link-B final alias $FOCUS_ALIAS_B: "
 read_focus_status "$FOCUS_ALIAS_B"
+
+# Apply after the final dual-link reset.
+sudo bash "$(dirname -- "${BASH_SOURCE[0]}")/enable-gmsl-rx-adaptation.sh" \
+  "$I2C_BUS" "$DES_ADDR" A B

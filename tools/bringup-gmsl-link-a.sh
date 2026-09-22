@@ -109,6 +109,10 @@ main() {
 	read_reg "$DES_ADDR" 0160
 	printf 'MAX96717 CSI input: '
 	read_reg "$SER_ADDR" 0383
+  # Apply after link resets so the receiver adaptation is enabled at handoff.
+  sudo bash "$(dirname -- "${BASH_SOURCE[0]}")/enable-gmsl-rx-adaptation.sh" \
+    "$I2C_BUS" "$DES_ADDR" A
+
 }
 
 main "$@"
