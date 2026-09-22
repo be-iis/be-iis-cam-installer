@@ -33,7 +33,7 @@ python3 examples/dual-hdmi-preview/dual_preview.py
 Stop with `Ctrl+C`.
 
 Both camera images are rotated 180°. To show the live camera-supply readout
-at the lower edge of the corresponding image, add `--ina`:
+in the status panel below the corresponding image, add `--ina`:
 
 ```bash
 sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina
@@ -41,6 +41,38 @@ sudo -E python3 examples/dual-hdmi-preview/dual_preview.py --ina
 
 Camera 0 is physically Link B (INA226 `0x45`); camera 1 is Link A
 (INA226 `0x41`). The readout uses the fitted 10mOhm shunts.
+
+### Live status below each video
+
+Status panels are always visible, including without `--ina`, and refresh once
+per second. They use separate black video sources so status can update even
+when a camera stops delivering frames.
+
+| Field | Meaning |
+| --- | --- |
+| Link / state | Physical link; RUN, WAIT for first frame, STALL, EOF, or process EXIT code |
+| Focus | Configured autofocus/manual position; not a measured lens position |
+| Out | Requested output resolution used by the raw frame reader |
+| RX fps | Complete frames received from the camera process during the last update interval, followed by requested fps |
+| Sensor | Actual selected sensor format parsed from the camera startup log; pending if not reported |
+| Frames | Complete frames received since startup |
+| Preview skip | Complete frames discarded in the Python preview queue to keep latency bounded |
+| RX gaps / Last | Pauses between received frames longer than max(250 ms, three requested frame periods); last such pause in ms |
+| Age | Time since the most recent complete frame; STALL after max(1 s, three requested frame periods) |
+| Log errors / Warnings | Camera log lines containing ERROR/FATAL or WARN/WARNING; errors also include incomplete frames and failed GStreamer buffer submission |
+| INA | Voltage/current with `--ina`, or read error / off |
+| Last message | Tail of the most recent warning/error; full camera logs remain on stderr with link prefixes |
+
+These are **host-side observations**, not GMSL CRC/error counters. RX fps is
+neither a sensor timestamp measurement nor the HDMI display rate. RX gaps can
+also result from host scheduling or backpressure. Preview skip does not count
+frames discarded later inside GStreamer. Small image corruption without a log
+message or timing change is not detected; zero errors does not prove a clean
+physical link. Initial camera startup delay is excluded from RX gaps.
+
+INA polling runs in a background thread with bounded subprocess timeouts, so
+I2C reads do not block the GLib frame delivery loop. A fatal GStreamer pipeline
+error is still printed to the terminal and ends the preview.
 
 ### Capture resolution and sensor mode
 
@@ -175,4 +207,14 @@ a discarded item is always a whole frame, never part of an image.
   numeric index maps universally to GMSL links; on this setup index 0 is
   `imx708@53` (Link B) and index 1 is `imx708@52` (Link A).
 - HDMI uses the Raspberry Pi VC4 DRM driver and an 800x480 output. Camera
-  images are scaled to 400x225 and vertically centred.
+  images are scaled to 400x225 at y=40; 400x200 status panels start at y=265.
+- Monitoring counters are protected by a lock. Camera log readers and INA
+  polling must not call GStreamer; labels are updated by the GLib thread.
+
+Hardware-independent monitoring checks:
+
+```bash
+python3 -m unittest discover -s examples/dual-hdmi-preview/tests -v
+```
+
+These checks do not replace a live Raspberry Pi/GStreamer display test.

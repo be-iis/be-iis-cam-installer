@@ -8,6 +8,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 
 import gi
 
@@ -40,7 +41,106 @@ def focus_value(value):
     return position
 
 
-def capture(camera, lens_position=None):
+class CameraStats:
+    """Host-side observations, not sensor frame counters or GMSL CRC counters."""
+
+    def __init__(self, link, focus=None):
+        self.lock = threading.Lock()
+        self.link = link
+        self.focus = "default" if focus is None else str(focus)
+        self.frames = self.skipped = self.gaps = self.errors = self.warnings = 0
+        self.last_frame = None
+        self.last_gap_ms = 0.0
+        self.eof = False
+        self.message = ""
+        self.sensor = "pending"
+        self.power = "INA: off"
+        self.started = self.sample_time = time.monotonic()
+        self.sample_frames = 0
+
+    def frame(self, now=None):
+        now = time.monotonic() if now is None else now
+        with self.lock:
+            if self.last_frame is not None:
+                gap = now - self.last_frame
+                if gap > max(0.25, 3 / FRAMERATE):
+                    self.gaps += 1
+                    self.last_gap_ms = gap * 1000
+            self.frames += 1
+            self.last_frame = now
+
+    def skip(self):
+        with self.lock:
+            self.skipped += 1
+
+    def error(self, message):
+        with self.lock:
+            self.errors += 1
+            self.message = message
+
+    def log(self, line):
+        with self.lock:
+            if re.search(r"\b(ERROR|FATAL)\b", line, re.IGNORECASE):
+                self.errors += 1
+                self.message = line.strip()
+            elif re.search(r"\bWARN(?:ING)?\b", line, re.IGNORECASE):
+                self.warnings += 1
+                self.message = line.strip()
+            mode = re.search(r"Selected sensor format:\s*(\S+)", line)
+            if mode:
+                self.sensor = mode.group(1)
+
+    def label(self, process, now=None):
+        now = time.monotonic() if now is None else now
+        code = process.poll()
+        with self.lock:
+            elapsed = now - self.sample_time
+            fps = (self.frames - self.sample_frames) / elapsed if elapsed > 0 else 0
+            self.sample_time, self.sample_frames = now, self.frames
+            age = now - self.last_frame if self.last_frame is not None else None
+            state = "RUN"
+            if code is not None:
+                state = f"EXIT {code}"
+            elif self.eof:
+                state = "EOF"
+            elif self.last_frame is None:
+                state = "WAIT"
+            elif age > max(1.0, 3 / FRAMERATE):
+                state = "STALL"
+            age_text = "--" if age is None else f"{age * 1000:.0f}ms"
+            # Limit diagnostic lines to the 400-pixel panel; full logs stay on stderr.
+            return "\n".join((
+                f"{self.link} | {state} | Focus: {self.focus}",
+                f"Out: {CAPTURE_WIDTH}x{CAPTURE_HEIGHT} | RX {fps:.1f}/{FRAMERATE} fps",
+                f"Sensor: {self.sensor[:38]}",
+                f"Frames {self.frames} | Preview skip {self.skipped}",
+                f"RX gaps {self.gaps} | Last {self.last_gap_ms:.0f}ms | Age {age_text}",
+                f"Log errors {self.errors} | Warnings {self.warnings}",
+                self.power[:48],
+                (self.message[-48:] if self.message else "GMSL CRC: not monitored"),
+            ))
+
+
+def read_camera_log(process, stats):
+    for raw in iter(process.stderr.readline, b""):
+        line = raw.decode("utf-8", errors="replace")
+        stats.log(line)
+        sys.stderr.write(f"[{stats.link}] {line}")
+
+
+def status_branch(name, pad):
+    # An independent source keeps diagnostics updating when a camera stops.
+    return (
+        "videotestsrc is-live=true pattern=black "
+        f"! video/x-raw,width={PREVIEW_WIDTH},height=200,framerate=5/1 "
+        f'! textoverlay name={name} text="Starting..." '
+        'valignment=top halignment=left font-desc="Monospace 10" '
+        "xpad=6 ypad=6 wait-text=false "
+        f"! queue max-size-buffers=2 leaky=downstream ! compositor.{pad}"
+    )
+
+
+def capture(camera, lens_position=None, monitor=False):
     return subprocess.Popen(
         [
             "rpicam-vid", "--camera", str(camera), "--nopreview",
@@ -53,6 +153,7 @@ def capture(camera, lens_position=None):
             if lens_position is not None else []
         ),
         stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE if monitor else None,
     )
 
 
@@ -74,31 +175,42 @@ def branch(name, label_name, pad, show_label, preview_height=PREVIEW_HEIGHT):
     )
 
 
-def feed(process, frames):
+def feed(process, frames, stats=None):
     """Read complete camera frames; never call GStreamer from this thread."""
     while True:
         data = bytearray()
         while len(data) < FRAME_SIZE:
             chunk = process.stdout.read(FRAME_SIZE - len(data))
             if not chunk:
-                frames.put(None)
+                if stats is not None:
+                    with stats.lock:
+                        stats.eof = True
+                    if data:
+                        stats.error(f"Incomplete frame: {len(data)}/{FRAME_SIZE} bytes")
                 return
             data.extend(chunk)
+        if stats is not None:
+            stats.frame()
         try:
             frames.put_nowait(bytes(data))
         except queue.Full:
             try:
                 frames.get_nowait()
+                if stats is not None:
+                    stats.skip()
             except queue.Empty:
                 pass
             frames.put_nowait(bytes(data))
 
 
-def latest_frame(frames):
+def latest_frame(frames, stats=None):
     data = None
     while True:
         try:
-            data = frames.get_nowait()
+            new_data = frames.get_nowait()
+            if data is not None and stats is not None:
+                stats.skip()
+            data = new_data
         except queue.Empty:
             return data
 
@@ -109,25 +221,30 @@ def push_frame(appsrc, data):
     return appsrc.emit("push-buffer", buffer) == Gst.FlowReturn.OK
 
 
-def start_captures(pipeline, lens_position=None, focus_a=None, focus_b=None):
+def start_captures(pipeline, lens_position=None, focus_a=None, focus_b=None, stats=None):
     """Start both readers and inject frames from the GLib main thread."""
     # Physical Link B is camera 0; Link A is camera 1.
     captures = [
-        capture(0, focus_b if focus_b is not None else lens_position),
-        capture(1, focus_a if focus_a is not None else lens_position),
+        capture(0, focus_b if focus_b is not None else lens_position, stats is not None),
+        capture(1, focus_a if focus_a is not None else lens_position, stats is not None),
     ]
     frame_queues = [queue.Queue(maxsize=2), queue.Queue(maxsize=2)]
     sources = [
         (pipeline.get_by_name("camera0"), frame_queues[0]),
         (pipeline.get_by_name("camera1"), frame_queues[1]),
     ]
-    for process, frames in zip(captures, frame_queues):
-        threading.Thread(target=feed, args=(process, frames), daemon=True).start()
+    observers = stats if stats is not None else [None, None]
+    for process, frames, observer in zip(captures, frame_queues, observers):
+        threading.Thread(target=feed, args=(process, frames, observer), daemon=True).start()
+        if observer is not None:
+            threading.Thread(target=read_camera_log, args=(process, observer), daemon=True).start()
 
     def drain_frames():
-        for appsrc, frames in sources:
-            data = latest_frame(frames)
+        for (appsrc, frames), observer in zip(sources, observers):
+            data = latest_frame(frames, observer)
             if data is not None and not push_frame(appsrc, data):
+                if observer is not None:
+                    observer.error("GStreamer push-buffer failed")
                 return False
         return True
 
@@ -140,7 +257,7 @@ def read_ina_u16(address, register):
     result = subprocess.run(
         ["i2ctransfer", "-f", "-y", str(INA226_BUS),
          f"w1@{address}", f"0x{register:02x}", "r2"],
-        check=True, text=True, capture_output=True,
+        check=True, text=True, capture_output=True, timeout=0.5,
     )
     values = result.stdout.split()
     if len(values) != 2:
@@ -158,8 +275,18 @@ def ina_label(link, address):
         voltage_v = bus_counts * 0.00125
         current_ma = shunt_counts * 0.25
         return f"{link}: {voltage_v:.3f} V  {current_ma:.2f} mA"
-    except (OSError, RuntimeError, subprocess.CalledProcessError) as error:
+    except (OSError, RuntimeError, subprocess.CalledProcessError, subprocess.TimeoutExpired) as error:
         return f"{link}: INA226 read error ({error})"
+
+
+def poll_power(stats, stop):
+    """Do not block the GLib frame delivery loop on I2C subprocesses."""
+    while not stop.is_set():
+        for observer, (link, address) in zip(stats, CAMERA_INA):
+            value = ina_label(link, address)
+            with observer.lock:
+                observer.power = value
+        stop.wait(1)
 
 
 def main():
@@ -212,11 +339,15 @@ def main():
 
     Gst.init(None)
     desc = " ".join((
-        branch("camera0", "label0", "sink_0", args.ina),
-        branch("camera1", "label1", "sink_1", args.ina),
+        branch("camera0", "label0", "sink_0", False),
+        branch("camera1", "label1", "sink_1", False),
+        status_branch("status0", "sink_2"),
+        status_branch("status1", "sink_3"),
         "compositor name=compositor "
-        f"sink_0::xpos=0 sink_0::ypos={PREVIEW_Y} "
-        f"sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos={PREVIEW_Y} "
+        "sink_0::xpos=0 sink_0::ypos=40 "
+        f"sink_1::xpos={PREVIEW_WIDTH} sink_1::ypos=40 "
+        "sink_2::xpos=0 sink_2::ypos=265 "
+        f"sink_3::xpos={PREVIEW_WIDTH} sink_3::ypos=265 "
         f"! video/x-raw,width={DISPLAY_WIDTH},height={DISPLAY_HEIGHT},"
         "pixel-aspect-ratio=1/1 "
         "! videoconvert ! kmssink driver-name=vc4",
@@ -237,22 +368,34 @@ def main():
     bus.connect("message", on_message)
     signal.signal(signal.SIGINT, lambda *_: loop.quit())
     pipeline.set_state(Gst.State.PLAYING)
-    captures = start_captures(pipeline, args.lens_position, args.focus_a, args.focus_b)
-
+    stats = [
+        CameraStats("Link B", args.focus_b if args.focus_b is not None else args.lens_position),
+        CameraStats("Link A", args.focus_a if args.focus_a is not None else args.lens_position),
+    ]
+    captures = start_captures(pipeline, args.lens_position, args.focus_a, args.focus_b, stats)
+    labels = [pipeline.get_by_name("status0"), pipeline.get_by_name("status1")]
+    stop_power = threading.Event()
+    power_thread = None
     if args.ina:
-        labels = [pipeline.get_by_name("label0"), pipeline.get_by_name("label1")]
+        for observer in stats:
+            observer.power = "INA: reading..."
+        power_thread = threading.Thread(target=poll_power, args=(stats, stop_power), daemon=True)
+        power_thread.start()
 
-        def update_ina_labels():
-            for label, (link, address) in zip(labels, CAMERA_INA):
-                label.set_property("text", ina_label(link, address))
-            return True
+    def update_status():
+        for label, observer, process in zip(labels, stats, captures):
+            label.set_property("text", observer.label(process))
+        return True
 
-        update_ina_labels()
-        GLib.timeout_add(1000, update_ina_labels)
+    update_status()
+    GLib.timeout_add(1000, update_status)
 
     try:
         loop.run()
     finally:
+        stop_power.set()
+        if power_thread is not None:
+            power_thread.join(timeout=3)
         pipeline.set_state(Gst.State.NULL)
         for process in captures:
             process.terminate()
@@ -261,6 +404,7 @@ def main():
                 process.wait(timeout=2)
             except subprocess.TimeoutExpired:
                 process.kill()
+                process.wait()
 
 
 if __name__ == "__main__":
