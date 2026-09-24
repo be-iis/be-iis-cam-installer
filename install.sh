@@ -2,6 +2,12 @@
 set -euo pipefail
 
 repo_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+profile="${1:-imx708-revb}"
+if (( $# > 1 )); then
+	printf 'Usage: %s [profile]\n' "$0" >&2
+	exit 2
+fi
+python3 "$repo_dir/tools/camera_profile.py" validate --profile "$profile"
 
 printf '==> BE-IIS camera installer\n'
 
@@ -46,8 +52,22 @@ sudo apt-get install -y \
 	gstreamer1.0-plugins-good \
 	gstreamer1.0-plugins-bad
 
-printf '\n==> Build and install patched IMX708 driver\n'
-make -C "$repo_dir" driver
+driver_target="$(python3 - "$repo_dir/profiles/$profile.json" <<'PY'
+import json,sys
+print(json.load(open(sys.argv[1]))['install']['driver_target'])
+PY
+)"
+if [[ ! "$driver_target" =~ ^[a-z][a-z0-9-]*$ ]]; then
+	printf 'Invalid driver target: %s\n' "$driver_target" >&2
+	exit 1
+fi
+if [[ "$driver_target" != none ]]; then
+	printf '\n==> Build and install camera driver for %s\n' "$profile"
+	make -C "$repo_dir" "$driver_target"
+fi
+
+printf '\n==> Install camera overlays for %s (without loading them)\n' "$profile"
+sudo python3 "$repo_dir/tools/camera_profile.py" install-overlays --profile "$profile"
 
 printf '\n==> Build and install MAX96716A I2C mux driver\n'
 make -C "$repo_dir" i2c-mux-driver

@@ -5,8 +5,8 @@
 ```bash
 cd ~/be-iis-cam-installer
 make unoverlay
-make cameras-a-b
-make a-b
+make prepare-a-b PROFILE=imx708-revb
+make pipeline-a-b PROFILE=imx708-revb
 rpicam-hello --list-cameras
 ```
 
@@ -23,8 +23,8 @@ If PiSP links are enabled at the same time, run:
 
 ```bash
 make unoverlay
-make cameras-a-b
-make a-b
+make prepare-a-b PROFILE=imx708-revb
+make pipeline-a-b PROFILE=imx708-revb
 ```
 
 ## A zero-byte RAW file

@@ -16,8 +16,8 @@ Start from the normal dual-camera bring-up:
 ```bash
 cd ~/be-iis-cam-installer
 make unoverlay
-make cameras-a-b
-make a-b
+make prepare-a-b PROFILE=imx708-revb
+make pipeline-a-b PROFILE=imx708-revb
 sudo apt install python3-opencv python3-gi python3-gst-1.0 \
   gstreamer1.0-tools gstreamer1.0-plugins-base \
   gstreamer1.0-plugins-good gstreamer1.0-plugins-bad
@@ -38,7 +38,7 @@ the board must be visible in both camera images.
 
 ```bash
 cd ~/be-iis-cam-installer/examples/stereo-distance-demo
-python3 calibrate.py
+python3 calibrate.py --profile imx708-revb
 ```
 
 This produces `stereo_calibration.npz` in the current directory. A stereo RMS
@@ -57,10 +57,11 @@ For a first display test, calibration may be skipped. Measure the horizontal
 distance between the two lens centres and pass it in millimetres:
 
 ```bash
-python3 stereo_distance_demo.py --baseline-mm 120
+python3 stereo_distance_demo.py --profile imx708-revb --baseline-mm 120
 ```
 
-This mode assumes parallel cameras and a nominal IMX708 field of view. The
+This mode assumes parallel cameras and the approximate horizontal field of view
+recorded in the profile. The
 result is marked with `~` and is suitable only for a visual demonstration.
 Use the calibration above before quoting a measurement accuracy.
 
@@ -68,7 +69,7 @@ Use the calibration above before quoting a measurement accuracy.
 
 ```bash
 cd ~/be-iis-cam-installer/examples/stereo-distance-demo
-python3 stereo_distance_demo.py
+python3 stereo_distance_demo.py --profile imx708-revb
 ```
 
 The program uses the VC4 DRM/KMS output directly and produces an 800 x 480

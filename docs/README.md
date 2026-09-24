@@ -1,49 +1,36 @@
 # BE-IIS GMSL2 IMX708 bring-up
 
-This guide covers the validated Link-A diagnostic setup of the BE-IIS GMSL2
-2CAM HAT with Raspberry Pi 5, MAX96716A, MAX96717F and IMX708.
+This guide covers the BE-IIS GMSL2 2CAM Rev. B HAT with Raspberry Pi 5,
+MAX96716A, MAX96717 and two IMX708 cameras.
 
 ## Update the checkout
 
-Keep local experimental changes before updating:
+Update the current branch while keeping any local experiments:
 
 ```bash
-git stash push -m "local camera tuning" -- init-imx708-gmsl-port-a-tunnel.sh
 git pull --ff-only
 ```
 
-Do not re-apply that stash when it only contains an old hard-coded DigiPot
-value. The current init script accepts the desired value with `POT_B`.
+## Rev. B link configuration
 
-## Link-A DigiPot setting
+Rev. B has no TPL0102 DigiPot. The profile configures the MAX96716A over I2C:
 
-The GMSL2 link needs a different DigiPot channel-B value for the two tested
-IMX708 modes. There is no common error-free value.
+| Link | Rate | Coax selection | Tunnel selection |
+| --- | --- | --- | --- |
+| A | `0x0001[1:0] = 2` (6 Gbit/s) | `0x0011[0] = 1` | `0x0474[0] = 1` |
+| B | `0x0004[1:0] = 2` (6 Gbit/s) | `0x0011[2] = 1` | `0x04b4[0] = 1` |
 
-| IMX708 mode | DigiPot B |
-| --- | --- |
-| 2304 x 1296 | `0xba` |
-| 4608 x 2592 | `0xb0` |
-
-The values are also stored in
-[`config/be-iis-2cam-imx708-link-a.conf`](../config/be-iis-2cam-imx708-link-a.conf).
-
-Initialize Link A with the value for the intended mode:
+Initialize both links and their CSI pipelines with the IMX708 profile:
 
 ```bash
-# 2304 x 1296
-sudo env POT_B=0xba bash ./init-imx708-gmsl-port-a-tunnel.sh init
-
-# 4608 x 2592
-sudo env POT_B=0xb0 bash ./init-imx708-gmsl-port-a-tunnel.sh init
+make unoverlay
+make prepare-a-b PROFILE=imx708-revb
+make pipeline-a-b PROFILE=imx708-revb
 ```
 
-`bash` is explicit here so the command also works if the executable bit of
-the script has not been preserved by a checkout.
-
-The init output must show the selected DigiPot value and a reachable
-MAX96717. A setting outside the mode-specific optimum can cause coloured
-pixel rows or horizontal artefacts in the recorded image.
+The profile also verifies the remote IMX708 IDs and enables receiver adaptation
+after link resets. The old mode-specific DigiPot values under `config/` are
+retained only as a record for earlier hardware.
 
 ## Capture a still image
 

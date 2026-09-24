@@ -18,18 +18,20 @@ move Link B from csi0 to csi1.
 ~~~bash
 cd ~/be-iis-cam-installer
 make unoverlay
-make cameras-a-b
-make a-b
+make prepare-a-b PROFILE=imx708-revb
+make pipeline-a-b PROFILE=imx708-revb
 ~~~
 
 The targets do the following:
 
 - unoverlay removes only the two dynamically loaded BE-IIS overlays.
-- cameras-a-b initializes both reverse-I2C paths, creates the aliases, compiles
-  and loads both IMX708 overlays.
-- a-b configures both serializers and both MAX96716A CSI outputs.
+- prepare-a-b initializes both reverse-I2C paths using the selected JSON profile,
+  creates aliases, then compiles and loads both IMX708 overlays.
+- pipeline-a-b applies the profile's serializer and MAX96716A CSI sequences.
 
-Link initialization enables MAX96716A receiver adaptation (`AdaptEn`, bit 7)
+The previous `cameras-a-b` and `a-b` targets remain compatible aliases.
+
+The profile enables MAX96716A receiver adaptation (`AdaptEn`, bit 7)
 for each selected link: register `0x1403` for A and `0x1503` for B. Video
 configuration reapplies it after its link resets. The helper preserves the other
 register bits and prints the old and read-back values; a missing enable bit
