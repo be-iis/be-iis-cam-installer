@@ -63,8 +63,8 @@ At the Pi:
 
 ~~~bash
 make unoverlay
-make cameras-a-b
-make a-b
+make prepare-a-b PROFILE=imx708-revb
+make pipeline-a-b PROFILE=imx708-revb
 rpicam-hello --camera 0 -t 0 --width 2304 --height 1296
 rpicam-hello --camera 1 -t 0 --width 2304 --height 1296
 ~~~

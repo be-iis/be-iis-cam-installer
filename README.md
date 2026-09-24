@@ -73,7 +73,7 @@ The steps are deliberately separate:
 - `make init-a` initialises only the Link-A control path.
 - `make init-b` initialises only the Link-B control path.
 - `make init-a-b` initialises both reverse-I2C links and aliases.
-- `make prepare-a-b` runs the dual control-plane setup and loads both IMX708 overlays.
+- `make prepare-a-b` runs the selected profile's dual control-plane setup and loads its camera overlays.
 - `make pipeline-a` configures the Link-A GMSL/CSI video pipeline.
 - `make pipeline-a-b` configures both serializers and deserializer CSI outputs.
 - `make unoverlay` removes only dynamically loaded BE-IIS camera overlays.
