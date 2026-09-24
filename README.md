@@ -8,10 +8,11 @@ initialises the cameras automatically.
 
 ## Installation
 
-On a fresh Raspberry Pi run:
+On a fresh Raspberry Pi run (the default profile is `imx708-revb`):
 
 ~~~bash
 ./install.sh
+# Equivalent: ./install.sh imx708-revb
 ~~~
 
 The installer:
@@ -19,11 +20,29 @@ The installer:
 1. checks for the Raspberry Pi camera I2C bus (`/dev/i2c-11`),
 2. enables `dtparam=i2c_csi_dsi=on` when required and reboots,
 3. installs the build, I2C, V4L2, rpicam, Python and GStreamer dependencies,
-4. builds and installs the patched IMX708 driver,
-5. builds and installs the MAX96716A I2C mux driver.
+4. builds and installs the driver specified by the camera profile,
+5. builds and installs the MAX96716A I2C mux driver,
+6. compiles and installs that profile's camera overlays without activating them.
 
 After an automatic reboot, run `./install.sh` again. Installation does **not**
 initialise a GMSL link or video pipeline.
+
+## Camera profiles
+
+`profiles/imx708-revb.json` records the hardware combination, I2C aliases,
+sensor ID checks, power sequence and ordered serializer/deserializer pipeline
+register writes. `tools/camera_profile.py` accepts only known operations
+(`write`, masked `update`, bounded `sleep`); JSON cannot execute shell code.
+Profile selection is explicit: `./install.sh PROFILE` followed by
+`make prepare-a-b PROFILE=PROFILE` and `make pipeline-a-b PROFILE=PROFILE`.
+The migrated IMX708 profile needs a Raspberry Pi hardware retest before
+production use.
+
+To add a camera, provide a reviewed JSON profile, a sensor driver Make target
+(or `none` for an existing kernel driver), and two overlay DTS files. Mark a
+new profile `verified` only after checking sensor IDs and image capture on the
+actual hardware. Sensor driver patches remain profile specific. The older
+IMX708 shell scripts remain in `tools/` for comparison and manual recovery.
 
 ## Current verified dual-camera configuration
 

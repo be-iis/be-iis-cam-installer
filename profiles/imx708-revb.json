@@ -1,0 +1,537 @@
+{
+  "schema": 1,
+  "id": "imx708-revb",
+  "status": "verified",
+  "description": "BE-IIS 2CAM RevB IMX708 reference configuration (hardware retest required after profile migration)",
+  "i2c_bus": 11,
+  "devices": {
+    "deserializer": "0x28",
+    "serializer": "0x40"
+  },
+  "serializer_id": [
+    "0xbf",
+    "0x06"
+  ],
+  "sensor": {
+    "name": "IMX708",
+    "address": "0x1a",
+    "id_register": "0x0016",
+    "id_values": [
+      "0x07",
+      "0x08"
+    ],
+    "focus_address": "0x0c",
+    "focus_status_register": "0x05"
+  },
+  "install": {
+    "driver_target": "driver",
+    "overlay_target": "overlays-a-b"
+  },
+  "overlays": {
+    "a": "imx708-gmsl-link-a",
+    "b": "imx708-gmsl-link-b"
+  },
+  "links": {
+    "a": {
+      "sensor_alias": "0x52",
+      "focus_alias": "0x5c",
+      "init": [
+        {
+          "op": "update",
+          "device": "deserializer",
+          "register": "0x0001",
+          "mask": "0x03",
+          "value": "0x02"
+        },
+        {
+          "op": "update",
+          "device": "deserializer",
+          "register": "0x0011",
+          "mask": "0x01",
+          "value": "0x01"
+        },
+        {
+          "op": "update",
+          "device": "deserializer",
+          "register": "0x0474",
+          "mask": "0x01",
+          "value": "0x01"
+        }
+      ]
+    },
+    "b": {
+      "sensor_alias": "0x53",
+      "focus_alias": "0x5d",
+      "init": [
+        {
+          "op": "update",
+          "device": "deserializer",
+          "register": "0x0004",
+          "mask": "0x03",
+          "value": "0x02"
+        },
+        {
+          "op": "update",
+          "device": "deserializer",
+          "register": "0x0011",
+          "mask": "0x04",
+          "value": "0x04"
+        },
+        {
+          "op": "update",
+          "device": "deserializer",
+          "register": "0x04b4",
+          "mask": "0x01",
+          "value": "0x01"
+        }
+      ]
+    }
+  },
+  "pipeline": {
+    "init": [],
+    "sensor_power": [
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0002",
+        "value": "0x03"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x056f",
+        "value": "0x0e"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0003",
+        "value": "0x07"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x03f0",
+        "value": "0x5a"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x03f0",
+        "value": "0x59"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0006",
+        "value": "0xb0"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x02ca",
+        "value": "0x80"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x02c7",
+        "value": "0x90"
+      },
+      {
+        "op": "sleep",
+        "seconds": 0.1
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x02ca",
+        "value": "0x90"
+      }
+    ],
+    "serializer_csi": [
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0002",
+        "value": "0x03"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0308",
+        "value": "0x64"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0311",
+        "value": "0x40"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0330",
+        "value": "0x40"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0331",
+        "value": "0x10"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0332",
+        "value": "0xe0"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0333",
+        "value": "0x04"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0334",
+        "value": "0x00"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0335",
+        "value": "0x00"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0383",
+        "value": "0x80"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x005b",
+        "value": "0x00"
+      },
+      {
+        "op": "write",
+        "device": "serializer",
+        "register": "0x0002",
+        "value": "0x43"
+      }
+    ],
+    "deserializer_a": [
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0313",
+        "value": "0x00"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0308",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x031d",
+        "value": "0x2f"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0320",
+        "value": "0x29"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0330",
+        "value": "0x04"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0332",
+        "value": "0xf4"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0333",
+        "value": "0x4e"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0334",
+        "value": "0xe4"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0335",
+        "value": "0x00"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0336",
+        "value": "0x00"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0440",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0443",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0444",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0445",
+        "value": "0x71"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0446",
+        "value": "0x19"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0447",
+        "value": "0x1c"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0449",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x044a",
+        "value": "0x50"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0474",
+        "value": "0x09"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x1d00",
+        "value": "0xf4"
+      },
+      {
+        "op": "sleep",
+        "seconds": 0.02
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x1d00",
+        "value": "0xf5"
+      }
+    ],
+    "deserializer_b": [
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0313",
+        "value": "0x00"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0308",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x031d",
+        "value": "0x2f"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0323",
+        "value": "0x29"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0326",
+        "value": "0x29"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0330",
+        "value": "0x04"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0332",
+        "value": "0xf4"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0333",
+        "value": "0x4e"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0334",
+        "value": "0xe4"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0335",
+        "value": "0x00"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0336",
+        "value": "0x00"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0480",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0483",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0484",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0485",
+        "value": "0x71"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0486",
+        "value": "0x19"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0487",
+        "value": "0x1c"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0489",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x048a",
+        "value": "0x50"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x04b4",
+        "value": "0x0f"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x1e00",
+        "value": "0xf4"
+      },
+      {
+        "op": "sleep",
+        "seconds": 0.02
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x1e00",
+        "value": "0xf5"
+      }
+    ],
+    "route_a": [
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0160",
+        "value": "0x01"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0161",
+        "value": "0x20"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0313",
+        "value": "0x02"
+      }
+    ],
+    "route_ab": [
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0161",
+        "value": "0x20"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0160",
+        "value": "0x03"
+      },
+      {
+        "op": "write",
+        "device": "deserializer",
+        "register": "0x0313",
+        "value": "0x02"
+      }
+    ]
+  }
+}

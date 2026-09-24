@@ -2,6 +2,7 @@ SHELL := /bin/bash
 .DEFAULT_GOAL := help
 
 CAMERA ?= 0
+PROFILE ?= imx708-revb
 CAPTURE_DIR ?= captures
 
 .PHONY: help driver i2c-mux-driver \
@@ -19,7 +20,8 @@ help:
 		'  make init-a-b        Initialise both GMSL control paths' \
 		'  make pipeline-a      Configure Link A video pipeline' \
 		'  make pipeline-a-b    Configure both video pipelines' \
-		'  make prepare-a-b     Initialise both links and load both IMX708 overlays' \
+		'  make prepare-a-b     Initialise both links and load selected camera overlays' \
+		'  make prepare-a-b PROFILE=imx708-revb  Select a verified camera profile' \
 		'  make unoverlay       Remove dynamically loaded BE-IIS camera overlays' \
 		'' \
 		'Capture / preview:' \
@@ -41,27 +43,27 @@ i2c-mux-driver:
 
 # Pure I2C control-plane bring-up for physical Link A, alias 0x52.
 init-a:
-	sudo bash tools/init-gmsl-link-a.sh
+	sudo python3 tools/camera_profile.py init-a --profile "$(PROFILE)"
 
 # Pure I2C control-plane bring-up for physical Link B, alias 0x53.
 init-b:
-	sudo bash tools/init-gmsl-link-b.sh
+	sudo python3 tools/camera_profile.py init-b --profile "$(PROFILE)"
 
 # Dual-link I2C control plane: sensor and focus aliases, no video pipeline.
 init-a-b:
-	sudo bash tools/init-gmsl-links-a-b.sh
+	sudo python3 tools/camera_profile.py init-a-b --profile "$(PROFILE)"
 
 # Configure video for Link A only. This intentionally enables Pipe Y only.
 pipeline-a:
-	sudo bash tools/bringup-gmsl-link-a.sh
+	sudo python3 tools/camera_profile.py pipeline-a --profile "$(PROFILE)"
 
 # Configure both video pipelines: A -> CSI1, B -> CSI0.
 pipeline-a-b:
-	sudo bash tools/bringup-gmsl-links-a-b.sh
+	sudo python3 tools/camera_profile.py pipeline-a-b --profile "$(PROFILE)"
 
 # Compile and load two IMX708 overlays: Link A -> CSI1, Link B -> CSI0.
 overlays-a-b:
-	sudo bash tools/load-dual-imx708-overlays.sh
+	sudo python3 tools/camera_profile.py overlays-a-b --profile "$(PROFILE)"
 
 # Prepare both cameras for Linux discovery. Video-pipeline setup is separate.
 prepare-a-b: init-a-b overlays-a-b
