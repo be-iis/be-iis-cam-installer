@@ -33,6 +33,8 @@ initialise a GMSL link or video pipeline.
 sensor ID checks, power sequence and ordered serializer/deserializer pipeline
 register writes. `tools/camera_profile.py` accepts only known operations
 (`write`, masked `update`, bounded `sleep`); JSON cannot execute shell code.
+Rev. B has no DigiPot: the profile explicitly sets 6 Gbit/s, coax and tunnel
+mode on both MAX96716A links through I2C before configuring the video pipes.
 Each register step has a `description` explaining its purpose. For settings
 whose individual register bits have not yet been confirmed, the description
 explicitly says so. After each link reset, the profile enables and verifies
