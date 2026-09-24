@@ -2,7 +2,7 @@
   "schema": 1,
   "id": "imx708-revb",
   "status": "verified",
-  "description": "BE-IIS 2CAM RevB IMX708 reference configuration (hardware retest required after profile migration)",
+  "description": "BE-IIS 2CAM RevB: two IMX708 sensors via MAX96717/MAX96716A in GMSL2 tunnel mode; tested on Raspberry Pi 5 with the patched IMX708 driver.",
   "i2c_bus": 11,
   "devices": {
     "deserializer": "0x28",
@@ -13,8 +13,14 @@
     "0x06"
   ],
   "capture": {
-    "camera_indices": [0, 1],
-    "links": ["b", "a"],
+    "camera_indices": [
+      0,
+      1
+    ],
+    "links": [
+      "b",
+      "a"
+    ],
     "stereo_uncalibrated_horizontal_fov_deg": 66
   },
   "sensor": {
@@ -47,21 +53,36 @@
           "device": "deserializer",
           "register": "0x0001",
           "mask": "0x03",
-          "value": "0x02"
+          "value": "0x02",
+          "description": "Set Link A GMSL2 rate to 6 Gbit/s."
         },
         {
           "op": "update",
           "device": "deserializer",
           "register": "0x0011",
           "mask": "0x01",
-          "value": "0x01"
+          "value": "0x01",
+          "description": "Select coax transport for this link."
         },
         {
           "op": "update",
           "device": "deserializer",
           "register": "0x0474",
           "mask": "0x01",
-          "value": "0x01"
+          "value": "0x01",
+          "description": "Set Link A pipe to tunnel mode."
+        }
+      ],
+      "description": "Physical Link A: local sensor/focus I2C aliases and link-specific deserializer setup.",
+      "post_reset": [
+        {
+          "op": "update",
+          "device": "deserializer",
+          "register": "0x1403",
+          "mask": "0x80",
+          "value": "0x80",
+          "verify_mask": "0x80",
+          "description": "Enable MAX96716A receiver adaptation (AdaptEn) for Link A after link reset; preserve all other RLMS3 bits and verify readback."
         }
       ]
     },
@@ -75,21 +96,36 @@
           "device": "deserializer",
           "register": "0x0004",
           "mask": "0x03",
-          "value": "0x02"
+          "value": "0x02",
+          "description": "Set Link B GMSL2 rate to 6 Gbit/s."
         },
         {
           "op": "update",
           "device": "deserializer",
           "register": "0x0011",
           "mask": "0x04",
-          "value": "0x04"
+          "value": "0x04",
+          "description": "Select coax transport for this link."
         },
         {
           "op": "update",
           "device": "deserializer",
           "register": "0x04b4",
           "mask": "0x01",
-          "value": "0x01"
+          "value": "0x01",
+          "description": "Set Link B pipe to tunnel mode."
+        }
+      ],
+      "description": "Physical Link B: local sensor/focus I2C aliases and link-specific deserializer setup.",
+      "post_reset": [
+        {
+          "op": "update",
+          "device": "deserializer",
+          "register": "0x1503",
+          "mask": "0x80",
+          "value": "0x80",
+          "verify_mask": "0x80",
+          "description": "Enable MAX96716A receiver adaptation (AdaptEn) for Link B after link reset; preserve all other RLMS3 bits and verify readback."
         }
       ]
     }
@@ -101,59 +137,69 @@
         "op": "write",
         "device": "serializer",
         "register": "0x0002",
-        "value": "0x03"
+        "value": "0x03",
+        "description": "Configure serializer video forwarding; final write enables the tunnel."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x056f",
-        "value": "0x0e"
+        "value": "0x0e",
+        "description": "Configure serializer reference-clock output for the remote camera."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0003",
-        "value": "0x07"
+        "value": "0x07",
+        "description": "Configure serializer GPIO for camera power and reset sequencing."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x03f0",
-        "value": "0x5a"
+        "value": "0x5a",
+        "description": "Sequence the remote camera supply enable."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x03f0",
-        "value": "0x59"
+        "value": "0x59",
+        "description": "Sequence the remote camera supply enable."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0006",
-        "value": "0xb0"
+        "value": "0xb0",
+        "description": "Set the MAX96717 clock, remote supply enable and IMX708 reset release before probing the sensor. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x02ca",
-        "value": "0x80"
+        "value": "0x80",
+        "description": "Sequence IMX708 reset through the serializer GPIO."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x02c7",
-        "value": "0x90"
+        "value": "0x90",
+        "description": "Configure IMX708 reset GPIO output."
       },
       {
         "op": "sleep",
-        "seconds": 0.1
+        "seconds": 0.1,
+        "description": "Wait for the preceding camera power or CSI PHY state change to settle."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x02ca",
-        "value": "0x90"
+        "value": "0x90",
+        "description": "Sequence IMX708 reset through the serializer GPIO."
       }
     ],
     "serializer_csi": [
@@ -161,73 +207,85 @@
         "op": "write",
         "device": "serializer",
         "register": "0x0002",
-        "value": "0x03"
+        "value": "0x03",
+        "description": "Configure serializer video forwarding; final write enables the tunnel."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0308",
-        "value": "0x64"
+        "value": "0x64",
+        "description": "Configure CSI lane mapping for the active video path."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0311",
-        "value": "0x40"
+        "value": "0x40",
+        "description": "Configure serializer CSI input lane mapping."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0330",
-        "value": "0x40"
+        "value": "0x40",
+        "description": "Configure two-lane CSI-2 input and tunnel forwarding on each MAX96717. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0331",
-        "value": "0x10"
+        "value": "0x10",
+        "description": "Configure two-lane CSI-2 input and tunnel forwarding on each MAX96717. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0332",
-        "value": "0xe0"
+        "value": "0xe0",
+        "description": "Configure two-lane CSI-2 input and tunnel forwarding on each MAX96717. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0333",
-        "value": "0x04"
+        "value": "0x04",
+        "description": "Configure two-lane CSI-2 input and tunnel forwarding on each MAX96717. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0334",
-        "value": "0x00"
+        "value": "0x00",
+        "description": "Configure two-lane CSI-2 input and tunnel forwarding on each MAX96717. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0335",
-        "value": "0x00"
+        "value": "0x00",
+        "description": "Configure two-lane CSI-2 input and tunnel forwarding on each MAX96717. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0383",
-        "value": "0x80"
+        "value": "0x80",
+        "description": "Enable serializer CSI input handling."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x005b",
-        "value": "0x00"
+        "value": "0x00",
+        "description": "Configure two-lane CSI-2 input and tunnel forwarding on each MAX96717. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "serializer",
         "register": "0x0002",
-        "value": "0x43"
+        "value": "0x43",
+        "description": "Configure serializer video forwarding; final write enables the tunnel."
       }
     ],
     "deserializer_a": [
@@ -235,131 +293,153 @@
         "op": "write",
         "device": "deserializer",
         "register": "0x0313",
-        "value": "0x00"
+        "value": "0x00",
+        "description": "Gate or release the deserializer CSI output during configuration."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0308",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Configure CSI lane mapping for the active video path."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x031d",
-        "value": "0x2f"
+        "value": "0x2f",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0320",
-        "value": "0x29"
+        "value": "0x29",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0330",
-        "value": "0x04"
+        "value": "0x04",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0332",
-        "value": "0xf4"
+        "value": "0xf4",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0333",
-        "value": "0x4e"
+        "value": "0x4e",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0334",
-        "value": "0xe4"
+        "value": "0xe4",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0335",
-        "value": "0x00"
+        "value": "0x00",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0336",
-        "value": "0x00"
+        "value": "0x00",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0440",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0443",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0444",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0445",
-        "value": "0x71"
+        "value": "0x71",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0446",
-        "value": "0x19"
+        "value": "0x19",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0447",
-        "value": "0x1c"
+        "value": "0x1c",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0449",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x044a",
-        "value": "0x50"
+        "value": "0x50",
+        "description": "Configure pipe Y and the CSI output to Pi CSI1 for Link A. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0474",
-        "value": "0x09"
+        "value": "0x09",
+        "description": "Set Link A pipe to tunnel mode."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x1d00",
-        "value": "0xf4"
+        "value": "0xf4",
+        "description": "Reset and release Link A CSI output PHY."
       },
       {
         "op": "sleep",
-        "seconds": 0.02
+        "seconds": 0.02,
+        "description": "Wait for the preceding camera power or CSI PHY state change to settle."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x1d00",
-        "value": "0xf5"
+        "value": "0xf5",
+        "description": "Reset and release Link A CSI output PHY."
       }
     ],
     "deserializer_b": [
@@ -367,137 +447,160 @@
         "op": "write",
         "device": "deserializer",
         "register": "0x0313",
-        "value": "0x00"
+        "value": "0x00",
+        "description": "Gate or release the deserializer CSI output during configuration."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0308",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Configure CSI lane mapping for the active video path."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x031d",
-        "value": "0x2f"
+        "value": "0x2f",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0323",
-        "value": "0x29"
+        "value": "0x29",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0326",
-        "value": "0x29"
+        "value": "0x29",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0330",
-        "value": "0x04"
+        "value": "0x04",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0332",
-        "value": "0xf4"
+        "value": "0xf4",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0333",
-        "value": "0x4e"
+        "value": "0x4e",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0334",
-        "value": "0xe4"
+        "value": "0xe4",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0335",
-        "value": "0x00"
+        "value": "0x00",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0336",
-        "value": "0x00"
+        "value": "0x00",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0480",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0483",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0484",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0485",
-        "value": "0x71"
+        "value": "0x71",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0486",
-        "value": "0x19"
+        "value": "0x19",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0487",
-        "value": "0x1c"
+        "value": "0x1c",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0489",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x048a",
-        "value": "0x50"
+        "value": "0x50",
+        "description": "Configure pipe Z and the CSI output to Pi CSI0 for Link B. Register value carried over from the working IMX708 sequence; individual bit functions have not been confirmed."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x04b4",
-        "value": "0x0f"
+        "value": "0x0f",
+        "description": "Set Link B pipe to tunnel mode."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x1e00",
-        "value": "0xf4"
+        "value": "0xf4",
+        "description": "Reset and release Link B CSI output PHY."
       },
       {
         "op": "sleep",
-        "seconds": 0.02
+        "seconds": 0.02,
+        "description": "Wait for the preceding camera power or CSI PHY state change to settle."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x1e00",
-        "value": "0xf5"
+        "value": "0xf5",
+        "description": "Reset and release Link B CSI output PHY."
       }
     ],
     "route_a": [
@@ -505,19 +608,22 @@
         "op": "write",
         "device": "deserializer",
         "register": "0x0160",
-        "value": "0x01"
+        "value": "0x01",
+        "description": "Enable the selected deserializer video pipes."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0161",
-        "value": "0x20"
+        "value": "0x20",
+        "description": "Route Link A and Link B stream 0 to the output pipes."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0313",
-        "value": "0x02"
+        "value": "0x02",
+        "description": "Gate or release the deserializer CSI output during configuration."
       }
     ],
     "route_ab": [
@@ -525,20 +631,32 @@
         "op": "write",
         "device": "deserializer",
         "register": "0x0161",
-        "value": "0x20"
+        "value": "0x20",
+        "description": "Route Link A and Link B stream 0 to the output pipes."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0160",
-        "value": "0x03"
+        "value": "0x03",
+        "description": "Enable the selected deserializer video pipes."
       },
       {
         "op": "write",
         "device": "deserializer",
         "register": "0x0313",
-        "value": "0x02"
+        "value": "0x02",
+        "description": "Gate or release the deserializer CSI output during configuration."
       }
     ]
+  },
+  "pipeline_descriptions": {
+    "init": "Shared deserializer settings before selecting an individual reverse-I2C link.",
+    "sensor_power": "Set the MAX96717 clock, remote supply enable and IMX708 reset release before probing the sensor.",
+    "serializer_csi": "Configure two-lane CSI-2 input and tunnel forwarding on each MAX96717.",
+    "deserializer_a": "Configure pipe Y and the CSI output to Pi CSI1 for Link A.",
+    "deserializer_b": "Configure pipe Z and the CSI output to Pi CSI0 for Link B.",
+    "route_a": "Select Link A stream 0, enable its pipe and release CSI output.",
+    "route_ab": "Route both stream-0 inputs, enable both pipes and release CSI output."
   }
 }

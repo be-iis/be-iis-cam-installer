@@ -36,6 +36,8 @@ def profile(name):
         if not isinstance(data["pipeline"][phase], list):
             raise ValueError(f"Missing pipeline phase: {phase}")
         for step in data["pipeline"][phase]:
+            if not isinstance(step.get("description"), str) or not step["description"].strip():
+                raise ValueError(f"Missing step description in {phase}")
             if step["op"] not in ("write", "update", "sleep"):
                 raise ValueError(f"Unsupported step: {step}")
             if step["op"] == "sleep":
@@ -52,11 +54,16 @@ def profile(name):
         for field in ("sensor_alias", "focus_alias"):
             if not 0 < number(data["links"][link][field]) < 0x80:
                 raise ValueError("Invalid I2C alias")
-        for step in data["links"][link]["init"]:
-            if step["op"] != "update" or step["device"] != "deserializer":
-                raise ValueError("Invalid per-link initialization step")
-            for field in ("register", "mask", "value"):
-                number(step[field])
+        for phase in ("init", "post_reset"):
+            for step in data["links"][link][phase]:
+                if step["op"] != "update" or step["device"] != "deserializer":
+                    raise ValueError("Invalid per-link initialization step")
+                if not isinstance(step.get("description"), str) or not step["description"].strip():
+                    raise ValueError(f"Missing step description in link {link} {phase}")
+                for field in ("register", "mask", "value"):
+                    number(step[field])
+                if "verify_mask" in step:
+                    number(step["verify_mask"])
     for field in ("address", "focus_address"):
         if not 0 < number(data["sensor"][field]) < 0x80:
             raise ValueError("Invalid remote I2C address")
@@ -99,6 +106,13 @@ class Bus:
                 current = self.transfer(self.addresses[step["device"]], register, count=1)[0]
                 value = (current & ~mask) | (value & mask)
             self.write(step["device"], register, value)
+            if "verify_mask" in step:
+                mask = number(step["verify_mask"])
+                observed = self.transfer(self.addresses[step["device"]], register, count=1)[0]
+                if (observed & mask) != (value & mask):
+                    raise RuntimeError(f"Register 0x{register:04x}: {step['description']}; "
+                                       f"read 0x{observed:02x}, expected bits 0x{value & mask:02x}")
+                print(f"0x{register:04x}: {step['description']} (0x{observed:02x})")
 
 
 def select(bus, link, data):
@@ -132,9 +146,9 @@ def aliases(bus, link, data):
     print(f"Link {link.upper()}: verified {sensor['name']} at {info['sensor_alias']}")
 
 
-def adaptation(bus, *links):
-    command("bash", str(ROOT / "tools/enable-gmsl-rx-adaptation.sh"), bus.bus,
-            f"0x{bus.addresses['deserializer']:02x}", *(x.upper() for x in links))
+def post_reset(bus, data, links):
+    for link in links:
+        bus.steps(data["links"][link]["post_reset"])
 
 
 def run_init(bus, data, links):
@@ -146,7 +160,7 @@ def run_init(bus, data, links):
         aliases(bus, link, data)
     if len(links) == 2:
         select(bus, "ab", data)
-    adaptation(bus, *links)
+    post_reset(bus, data, links)
 
 
 def run_pipeline(bus, data, links):
@@ -157,7 +171,7 @@ def run_pipeline(bus, data, links):
     bus.steps(data["pipeline"]["route_ab" if len(links) == 2 else "route_a"])
     if len(links) == 2:
         select(bus, "ab", data)
-    adaptation(bus, *links)
+    post_reset(bus, data, links)
 
 
 def install_overlays(data, load=False):
