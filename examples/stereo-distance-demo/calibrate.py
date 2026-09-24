@@ -9,6 +9,9 @@ import pathlib
 import subprocess
 import sys
 
+sys.path.insert(0, str(pathlib.Path(__file__).resolve().parents[1]))
+from camera_profile import load as load_camera_profile  # noqa: E402
+
 import cv2
 import numpy as np
 
@@ -36,7 +39,12 @@ def main() -> None:
     parser.add_argument("--captures", type=pathlib.Path,
                         default=pathlib.Path("calibration-captures"),
                         help="directory that keeps every captured image pair")
+    parser.add_argument("--profile", default="imx708-revb", help="verified camera profile")
     args = parser.parse_args()
+    try:
+        indices = load_camera_profile(args.profile)["capture"]["camera_indices"]
+    except (OSError, ValueError, KeyError) as error:
+        parser.error(f"invalid camera profile: {error}")
 
     try:
         cols, rows = (int(value) for value in args.corners.lower().split("x"))
@@ -65,8 +73,8 @@ def main() -> None:
         image0 = args.captures / f"{attempt:03d}-camera0.png"
         image1 = args.captures / f"{attempt:03d}-camera1.png"
         try:
-            capture(0, image0)
-            capture(1, image1)
+            capture(indices[0], image0)
+            capture(indices[1], image1)
         except subprocess.CalledProcessError as error:
             print(f"Capture failed: {error}", file=sys.stderr)
             continue

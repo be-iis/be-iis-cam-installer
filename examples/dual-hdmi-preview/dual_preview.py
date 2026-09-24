@@ -10,6 +10,10 @@ import subprocess
 import sys
 import threading
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from camera_profile import load as load_camera_profile  # noqa: E402
 
 import gi
 
@@ -226,12 +230,14 @@ def push_frame(appsrc, data):
     return appsrc.emit("push-buffer", buffer) == Gst.FlowReturn.OK
 
 
-def start_captures(pipeline, lens_position=None, focus_a=None, focus_b=None, stats=None):
+def start_captures(pipeline, lens_position=None, focus_a=None, focus_b=None, stats=None,
+                   camera_indices=(0, 1), camera_links=("b", "a")):
     """Start both readers and inject frames from the GLib main thread."""
-    # Physical Link B is camera 0; Link A is camera 1.
     captures = [
-        capture(0, focus_b if focus_b is not None else lens_position, stats is not None),
-        capture(1, focus_a if focus_a is not None else lens_position, stats is not None),
+        capture(index, (focus_a if link == "a" else focus_b)
+                if (focus_a if link == "a" else focus_b) is not None
+                else lens_position, stats is not None)
+        for index, link in zip(camera_indices, camera_links)
     ]
     frame_queues = [queue.Queue(maxsize=2), queue.Queue(maxsize=2)]
     sources = [
@@ -366,14 +372,16 @@ class GmslMonitor:
 
 
 def main():
-    global CAPTURE_WIDTH, CAPTURE_HEIGHT, FRAMERATE, FRAME_SIZE, SENSOR_MODE
+    global CAPTURE_WIDTH, CAPTURE_HEIGHT, FRAMERATE, FRAME_SIZE, SENSOR_MODE, CAMERA_INA, INA226_BUS
     parser = argparse.ArgumentParser(description="Dual GMSL2 HDMI preview")
+    parser.add_argument("--profile", default="imx708-revb",
+                        help="verified camera profile (default: imx708-revb)")
     parser.add_argument("--gmsl", action="store_true",
                         help="monitor MAX96716A tunnel CRC/ECC and decoding errors (read-to-clear)")
-    parser.add_argument("--gmsl-bus", type=int, default=11,
-                        help="MAX96716A I2C bus (default: 11)")
-    parser.add_argument("--gmsl-address", type=lambda value: int(value, 0), default=0x28,
-                        help="MAX96716A 7-bit I2C address (default: 0x28)")
+    parser.add_argument("--gmsl-bus", type=int, default=None,
+                        help="MAX96716A I2C bus (default: selected profile)")
+    parser.add_argument("--gmsl-address", type=lambda value: int(value, 0), default=None,
+                        help="MAX96716A 7-bit I2C address (default: selected profile)")
     parser.add_argument("--width", type=int, default=1024,
                         help="capture output width, multiple of 32 (default: 1024)")
     parser.add_argument("--height", type=int, default=576,
@@ -400,6 +408,25 @@ def main():
         help="Link B (camera 0): auto or dioptres; overrides --lens-position",
     )
     args = parser.parse_args()
+    try:
+        selected = load_camera_profile(args.profile)
+    except (OSError, ValueError, KeyError) as error:
+        parser.error(f"invalid camera profile: {error}")
+    indices = selected["capture"]["camera_indices"]
+    links = selected["capture"]["links"]
+    INA226_BUS = selected["i2c_bus"]
+    if args.ina:
+        try:
+            CAMERA_INA = tuple(("Link " + link.upper(), selected["links"][link]["ina_address"])
+                               for link in links)
+        except KeyError:
+            parser.error("selected profile has no INA226 addresses")
+    if args.gmsl_bus is None:
+        args.gmsl_bus = selected["i2c_bus"]
+    if args.gmsl_address is None:
+        args.gmsl_address = int(selected["devices"]["deserializer"], 16)
+    if args.gmsl_bus != selected["i2c_bus"] or args.gmsl_address != int(selected["devices"]["deserializer"], 16):
+        parser.error("GMSL monitor bus/address must match the selected profile")
     if args.gmsl_bus < 0 or not 0x08 <= args.gmsl_address <= 0x77:
         parser.error("invalid GMSL I2C bus or 7-bit address")
     gmsl_lock = None
@@ -462,11 +489,12 @@ def main():
     bus.connect("message", on_message)
     signal.signal(signal.SIGINT, lambda *_: loop.quit())
     pipeline.set_state(Gst.State.PLAYING)
-    stats = [
-        CameraStats("Link B", args.focus_b if args.focus_b is not None else args.lens_position),
-        CameraStats("Link A", args.focus_a if args.focus_a is not None else args.lens_position),
-    ]
-    captures = start_captures(pipeline, args.lens_position, args.focus_a, args.focus_b, stats)
+    stats = [CameraStats("Link " + link.upper(),
+                        (args.focus_a if link == "a" else args.focus_b)
+                        if (args.focus_a if link == "a" else args.focus_b) is not None
+                        else args.lens_position) for link in links]
+    captures = start_captures(pipeline, args.lens_position, args.focus_a, args.focus_b,
+                              stats, indices, links)
     labels = [pipeline.get_by_name("status0"), pipeline.get_by_name("status1")]
     stop_power = threading.Event()
     power_thread = None

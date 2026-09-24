@@ -11,8 +11,8 @@ First prepare both camera links and video pipelines:
 
 ```bash
 make unoverlay
-make prepare-a-b
-make pipeline-a-b
+make prepare-a-b PROFILE=imx708-revb
+make pipeline-a-b PROFILE=imx708-revb
 ```
 
 ### HDMI preview on the Pi
@@ -21,13 +21,13 @@ Shows camera 0 on the left and camera 1 on the right on a directly connected
 800x480 HDMI display:
 
 ```bash
-make video-dual
+make video-dual PROFILE=imx708-revb
 ```
 
 Equivalent direct command:
 
 ```bash
-python3 examples/dual-hdmi-preview/dual_preview.py
+python3 examples/dual-hdmi-preview/dual_preview.py --profile imx708-revb
 ```
 
 Stop with `Ctrl+C`.
@@ -77,8 +77,11 @@ physical link. Initial camera startup delay is excluded from RX gaps.
 sudo python3 examples/dual-hdmi-preview/dual_preview.py --ina --gmsl
 ```
 
-The MAX96716A is polled in the background. `--gmsl-bus` defaults to 11;
-`--gmsl-address` defaults to `0x28`. One cooperating monitor is allowed per device.
+The MAX96716A is polled in the background. `--gmsl-bus` and `--gmsl-address`
+default to the selected profile. The profile also chooses the two camera indices,
+link labels and INA226 addresses. The preview does not initialise the links;
+prepare the cameras with the same profile first. One cooperating monitor is
+allowed per device.
 Do not run other register readers concurrently: these reads consume flags.
 
 The [MAX96716A data sheet](https://www.analog.com/media/en/technical-documentation/data-sheets/max96716a.pdf)

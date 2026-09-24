@@ -12,6 +12,11 @@
     "0xbf",
     "0x06"
   ],
+  "capture": {
+    "camera_indices": [0, 1],
+    "links": ["b", "a"],
+    "stereo_uncalibrated_horizontal_fov_deg": 66
+  },
   "sensor": {
     "name": "IMX708",
     "address": "0x1a",
@@ -35,6 +40,7 @@
     "a": {
       "sensor_alias": "0x52",
       "focus_alias": "0x5c",
+      "ina_address": "0x41",
       "init": [
         {
           "op": "update",
@@ -62,6 +68,7 @@
     "b": {
       "sensor_alias": "0x53",
       "focus_alias": "0x5d",
+      "ina_address": "0x45",
       "init": [
         {
           "op": "update",

@@ -11,12 +11,13 @@ the PC:
 
 ```bash
 make unoverlay
-make cameras-a-b
-make a-b
-python3 examples/dual-pc-preview/dual_stream_to_pc.py 192.168.178.116
+make prepare-a-b PROFILE=imx708-revb
+make pipeline-a-b PROFILE=imx708-revb
+python3 examples/dual-pc-preview/dual_stream_to_pc.py 192.168.178.116 --profile imx708-revb
 ```
 
-Use `--port` to use another UDP port. The default is `5000`.
+Use `--port` to use another UDP port. The default is `5000`. The profile
+selects the two rpicam camera indices; it must match the prepared pipeline.
 
 ## On the PC
 

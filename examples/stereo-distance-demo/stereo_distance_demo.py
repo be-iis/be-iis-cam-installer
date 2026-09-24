@@ -6,6 +6,10 @@ import signal
 import subprocess
 import sys
 import threading
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+from camera_profile import load as load_camera_profile  # noqa: E402
 
 import cv2
 import gi
@@ -58,7 +62,7 @@ def newest(frames):
 
 
 class StereoDemo:
-    def __init__(self, calibration_path, baseline_mm):
+    def __init__(self, calibration_path, baseline_mm, horizontal_fov_deg):
         self.calibrated = calibration_path is not None
         if calibration_path:
             data = np.load(calibration_path)
@@ -68,12 +72,12 @@ class StereoDemo:
             self.baseline_m = float(data["baseline_m"])
         else:
             # Quick demonstration only: assumes cameras are parallel and uses
-            # IMX708's approximate 66 degree horizontal field of view.
+            # Approximate field of view from the tested camera profile.
             grid_x, grid_y = np.meshgrid(
                 np.arange(WIDTH, dtype=np.float32), np.arange(HEIGHT, dtype=np.float32))
             self.map0x = self.map1x = grid_x
             self.map0y = self.map1y = grid_y
-            self.focal_px = WIDTH / (2.0 * np.tan(np.deg2rad(33.0)))
+            self.focal_px = WIDTH / (2.0 * np.tan(np.deg2rad(horizontal_fov_deg / 2.0)))
             self.baseline_m = baseline_mm / 1000.0
         self.matcher = cv2.StereoSGBM_create(
             minDisparity=0, numDisparities=96, blockSize=7,
@@ -142,10 +146,15 @@ def main():
                         help="stereo_calibration.npz from calibrate.py")
     parser.add_argument("--baseline-mm", type=float, default=120.0,
                         help="camera-centre spacing for uncalibrated quick mode")
+    parser.add_argument("--profile", default="imx708-revb", help="verified camera profile")
     args = parser.parse_args()
     try:
-        demo = StereoDemo(args.calibration, args.baseline_mm)
-    except (OSError, KeyError) as error:
+        selected = load_camera_profile(args.profile)
+        fov = selected["capture"].get("stereo_uncalibrated_horizontal_fov_deg")
+        if not args.calibration and not isinstance(fov, (int, float)):
+            parser.error("uncalibrated demo requires a profile field of view")
+        demo = StereoDemo(args.calibration, args.baseline_mm, fov)
+    except (OSError, KeyError, ValueError) as error:
         sys.exit(f"Calibration file cannot be loaded: {error}")
 
     Gst.init(None)
@@ -157,7 +166,7 @@ def main():
         "! kmssink")
     appsrc = pipeline.get_by_name("display")
     loop = GLib.MainLoop()
-    captures = [capture(0), capture(1)]
+    captures = [capture(index) for index in selected["capture"]["camera_indices"]]
     queues = [queue.Queue(maxsize=2), queue.Queue(maxsize=2)]
     for process, frames in zip(captures, queues):
         threading.Thread(target=feed, args=(process, frames), daemon=True).start()

@@ -100,7 +100,7 @@ video-1:
 
 # Side-by-side HDMI preview of both cameras.
 video-dual:
-	python3 examples/dual-hdmi-preview/dual_preview.py
+	python3 examples/dual-hdmi-preview/dual_preview.py --profile "$(PROFILE)"
 
 # Compatibility aliases for the previous short names.
 a: pipeline-a
