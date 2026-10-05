@@ -401,8 +401,13 @@ def main() -> int:
             flush=True,
         )
 
-        # Re-apply midpoint and verify it one more time.
-        final = trial(midpoint)
+        # Re-apply midpoint and verify it one more time, independently of the
+        # cached sweep result.
+        final = run_trial(
+            des, regs, midpoint, args.dwell, args.poll, args.settle,
+            args.lock_timeout, out_dir
+        )
+        trials.append(final)
         if not final.passed:
             print(
                 "Midpoint verification failed; results are not stable enough to "
