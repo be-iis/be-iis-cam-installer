@@ -120,3 +120,28 @@ make tx-amp-test LINK=A TX_AMP_CODE=0x35 TX_AMP_DWELL=60
 ```
 
 Results are stored below `captures/tx-amp-test/`.
+
+
+## MAX96716A 6 Gbit/s long-channel errata test
+
+`gmsl-long-channel-test.py` applies the Analog Devices MAX96716A/MAX96716F
+errata workaround for 6 Gbit/s channels with high insertion loss:
+
+- `RLMS1F = 0x8c` (initial gain)
+- `RLMS23 = 0x58` (initial boost)
+- one `RESET_ONESHOT` on the selected link
+
+The tool first verifies that the selected link is currently configured for
+6 Gbit/s. It then applies the two full-byte writes exactly as documented,
+performs one reset, clears the selected read-to-clear decode counter, and soaks
+the link for the requested dwell time. The first decode-error event gets an
+immediate snapshot.
+
+Example:
+
+```bash
+make long-channel-test LINK=A LONG_CHANNEL_DWELL=60
+```
+
+The original `RLMS1F` and `RLMS23` bytes are restored afterwards unless
+`APPLY=1` is supplied.
