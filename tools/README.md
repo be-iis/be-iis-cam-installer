@@ -35,7 +35,8 @@ Example:
 - stores an RLMS snapshot immediately on the first decode-error hit,
 - finds the contiguous error-free window and verifies its midpoint again.
 
-Run representative camera traffic in parallel, but do **not** run
+A camera stream is not required for the GMSL decode counter. If one is running,
+the one-shot reset at each setting can interrupt it. Do **not** run
 `dual_preview.py --gmsl` at the same time because both tools consume the same
 read-to-clear counters.
 
