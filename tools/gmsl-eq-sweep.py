@@ -9,8 +9,9 @@ Important: BSTInit is the *initial* receiver boost used during link calibration,
 not a readable "current AEQ coefficient". Each trial therefore performs a
 one-shot link reset so the requested BSTInit value takes effect.
 
-Run a camera stream in parallel so the link carries representative traffic, but
-do not run another process that consumes the read-to-clear GMSL counters.
+The GMSL decode counter can be tested without a camera stream. If a stream is
+running, expect the per-setting one-shot resets to interrupt it. Do not run
+another process that consumes the read-to-clear GMSL counters.
 """
 
 from __future__ import annotations
