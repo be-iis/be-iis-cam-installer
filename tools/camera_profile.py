@@ -119,17 +119,31 @@ RATE_REGISTERS = {"a": 0x0001, "b": 0x0004}
 LOCK_REGISTERS = {"a": 0x0013, "b": 0x5009}
 
 
-def select(bus, link, data):
+def select_local(bus, link):
+    """Select physical link(s) without assuming the remote serializer is reachable."""
     bit = {"a": 1, "b": 2, "ab": 3}[link]
     bus.steps([{"op": "update", "device": "deserializer", "register": "0x0f00", "mask": "0x03", "value": f"0x{bit:02x}"},
                {"op": "update", "device": "deserializer", "register": "0x0010", "mask": "0x33", "value": f"0x{0x30 | bit:02x}"},
                {"op": "update", "device": "deserializer", "register": "0x0012", "mask": "0x20", "value": "0x20"},
                {"op": "sleep", "seconds": 0.2}])
-    if link != "ab":
-        expected = [number(x) for x in data["serializer_id"]]
+
+
+def read_serializer_id(bus, data):
+    expected = [number(x) for x in data["serializer_id"]]
+    try:
         observed = bus.transfer(bus.addresses["serializer"], 0x000d, count=len(expected))
-        if observed != expected:
-            raise RuntimeError(f"Link {link.upper()}: serializer ID {observed}, expected {expected}")
+    except subprocess.CalledProcessError:
+        return None
+    return observed if observed == expected else None
+
+
+def select(bus, link, data):
+    select_local(bus, link)
+    if link != "ab" and read_serializer_id(bus, data) is None:
+        raise RuntimeError(
+            f"Link {link.upper()}: serializer is not reachable at "
+            f"0x{bus.addresses['serializer']:02x}"
+        )
 
 
 def split_link_init(data, link):
@@ -158,6 +172,59 @@ def wait_link_lock(bus, link, timeout=3.0):
             pass
         time.sleep(0.05)
     return False
+
+
+
+def recover_serializer_rate(bus, link, data):
+    """Recover reverse I2C by trying the supported DES RX rates after cold boot."""
+    des_rate_reg = RATE_REGISTERS[link]
+    current = bus.transfer(bus.addresses["deserializer"], des_rate_reg, count=1)[0]
+    current_rate = current & 0x03
+
+    candidates = []
+    for rate in (current_rate, 1, 2):
+        if rate in (1, 2) and rate not in candidates:
+            candidates.append(rate)
+
+    for rate in candidates:
+        reg = bus.transfer(bus.addresses["deserializer"], des_rate_reg, count=1)[0]
+        bus.transfer(
+            bus.addresses["deserializer"], des_rate_reg,
+            value=(reg & ~0x03) | rate,
+        )
+
+        reset_reg = 0x0010 if link == "a" else 0x0012
+        reset_value = bus.transfer(
+            bus.addresses["deserializer"], reset_reg, count=1
+        )[0]
+        bus.transfer(
+            bus.addresses["deserializer"], reset_reg,
+            value=reset_value | 0x20,
+        )
+
+        if not wait_link_lock(bus, link, timeout=1.0):
+            print(
+                f"Link {link.upper()}: no lock with DES RX rate "
+                f"{rate * 3} Gbit/s"
+            )
+            continue
+
+        time.sleep(0.05)
+        if read_serializer_id(bus, data) is not None:
+            print(
+                f"Link {link.upper()}: recovered serializer at "
+                f"{rate * 3} Gbit/s"
+            )
+            return rate
+
+        print(
+            f"Link {link.upper()}: lock but serializer not reachable at "
+            f"{rate * 3} Gbit/s"
+        )
+
+    raise RuntimeError(
+        f"Link {link.upper()}: serializer not reachable at either 3 or 6 Gbit/s"
+    )
 
 
 def sync_link_rate(bus, link, data, desired_rate):
@@ -259,9 +326,11 @@ def run_init(bus, data, links):
         init_steps, desired_rate = split_link_init(data, link)
         bus.steps(init_steps)
 
-        # Reach the serializer at the current common rate, then switch both ends
-        # in the safe order: serializer TX first, deserializer RX second.
-        select(bus, link, data)
+        # Select locally first. If cold boot left SER and DES at different
+        # rates, try 3G/6G on the DES until reverse I2C to 0x40 is recovered.
+        # Only then switch both ends to the profile rate.
+        select_local(bus, link)
+        recover_serializer_rate(bus, link, data)
         sync_link_rate(bus, link, data, desired_rate)
 
         bus.steps(data["pipeline"]["sensor_power"])
