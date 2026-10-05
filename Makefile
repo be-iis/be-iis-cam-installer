@@ -12,12 +12,14 @@ EQ_VALUE ?= 0x11
 EQ_TEST_DWELL ?= 60
 RATE_LINK ?= AB
 RATE_VERIFY ?= 2
+TX_AMP_CODE ?= 0x2d
+TX_AMP_DWELL ?= 60
 
 .PHONY: help driver i2c-mux-driver \
 	init-a init-b init-a-b \
 	pipeline-a pipeline-a-b \
 	overlays-a-b prepare-a-b unoverlay \
-	png png-0 png-1 video video-0 video-1 video-dual eq-sweep eq-test rate-3g rate-6g \
+	png png-0 png-1 video video-0 video-1 video-dual eq-sweep eq-test tx-amp-test rate-3g rate-6g \
 	a a-b cameras-a-b all-a all status clean
 
 help:
@@ -44,6 +46,7 @@ help:
 		'MAX96716A diagnostics:' \
 		'  make eq-sweep LINK=A EQ_START=0x18  Sweep manual BSTInit around a known-good value' \
 		'  make eq-test LINK=A EQ_VALUE=0x11 EQ_DWELL=60  Fixed manual-EQ soak test' \
+		'  make tx-amp-test LINK=A TX_AMP_CODE=0x2d TX_AMP_DWELL=60  Manual MAX96717 TX amplitude test' \
 		'  make rate-3g          Switch both GMSL2 links to 3 Gbit/s' \
 		'  make rate-6g          Switch both GMSL2 links back to 6 Gbit/s'
 
@@ -131,6 +134,14 @@ eq-test:
 	@case "$(LINK)" in A|B) ;; *) echo 'LINK must be A or B' >&2; exit 2 ;; esac
 	sudo python3 tools/gmsl-eq-test.py --profile "$(PROFILE)" --link "$(LINK)" \
 		--value "$(EQ_VALUE)" --dwell "$(EQ_DWELL)" --poll 1 \
+		$(if $(filter 1 yes true,$(APPLY)),--apply,)
+
+# Hold one MAX96717 manual TX-amplitude code and watch decode errors.
+# RX EQ/adaptation and the current 3/6-Gbit/s mode are not changed.
+tx-amp-test:
+	@case "$(LINK)" in A|B) ;; *) echo 'LINK must be A or B' >&2; exit 2 ;; esac
+	sudo python3 tools/gmsl-tx-amp-test.py --profile "$(PROFILE)" --link "$(LINK)" \
+		--code "$(TX_AMP_CODE)" --dwell "$(TX_AMP_DWELL)" --poll 1 \
 		$(if $(filter 1 yes true,$(APPLY)),--apply,)
 
 # Explicit GMSL2 forward-link rate switch. RATE_LINK may be A, B or AB.
