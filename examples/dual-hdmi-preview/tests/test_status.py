@@ -62,6 +62,17 @@ class StatusTests(unittest.TestCase):
         self.assertEqual(stats.sensor, '4608x2592-SBGGR10_1X10/RAW')
         self.assertIn('[Link A] ERROR capture failed', output.getvalue())
 
+    def test_known_pdaf_unsupported_format_is_suppressed(self):
+        stats = self.stats()
+        raw = (b'[0:00:01.000000000] ERROR IPARPI cam_helper_imx708.cpp:269 '
+               b'PDAF data in unsupported format\n')
+        process = types.SimpleNamespace(stderr=io.BytesIO(raw))
+        output = io.StringIO()
+        with patch.object(preview.sys, 'stderr', output):
+            preview.read_camera_log(process, stats)
+        self.assertEqual(stats.errors, 0)
+        self.assertEqual(output.getvalue(), '')
+
     def test_full_queue_eof_does_not_block_and_skip_counts(self):
         stats = self.stats()
         frames = queue.Queue(maxsize=2)
