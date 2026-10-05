@@ -54,6 +54,23 @@ def profile(name):
         for field in ("sensor_alias", "focus_alias"):
             if not 0 < number(data["links"][link][field]) < 0x80:
                 raise ValueError("Invalid I2C alias")
+        tuning = data["links"][link].get("long_channel_6g")
+        if tuning is not None:
+            if set(tuning) != {"tx_amp_code", "rlms1f", "rlms23"}:
+                raise ValueError(
+                    f"Invalid long_channel_6g fields for link {link}"
+                )
+            tx_amp_code = number(tuning["tx_amp_code"])
+            rlms1f = number(tuning["rlms1f"])
+            rlms23 = number(tuning["rlms23"])
+            if not 0 <= tx_amp_code <= 0x3f:
+                raise ValueError(
+                    f"Invalid long-channel TX amplitude code for link {link}"
+                )
+            if not 0 <= rlms1f <= 0xff or not 0 <= rlms23 <= 0xff:
+                raise ValueError(
+                    f"Invalid long-channel RLMS byte for link {link}"
+                )
         for phase in ("init", "post_reset"):
             for step in data["links"][link][phase]:
                 if step["op"] != "update" or step["device"] != "deserializer":
@@ -227,7 +244,7 @@ def recover_serializer_rate(bus, link, data):
     )
 
 
-def sync_link_rate(bus, link, data, desired_rate, tx_amp_code=None, long_channel=False):
+def sync_link_rate(bus, link, data, desired_rate, tuning=None):
     """Switch MAX96717 TX and matching MAX96716A RX rate without losing cold boot.
 
     The serializer must be changed while the old-rate link is still alive.
@@ -254,14 +271,30 @@ def sync_link_rate(bus, link, data, desired_rate, tx_amp_code=None, long_channel
     else:
         print(f"Link {link.upper()}: GMSL2 rate already {desired_rate * 3} Gbit/s")
 
-    # Optional cold-start experiment: set the serializer amplitude while reverse
-    # I2C is known-good, before any forward-rate change can make 0x40 disappear.
-    if tx_amp_code is not None:
-        amp_original = bus.transfer(bus.addresses["serializer"], 0x1495, count=1)[0]
+    # Optional profile-controlled 6G long-channel tuning. Program the remote
+    # serializer while reverse I2C is known-good, before changing the link rate.
+    tx_amp_code = None
+    if tuning is not None:
+        if desired_rate != 2:
+            raise RuntimeError(
+                f"Link {link.upper()}: long_channel_6g requires 6 Gbit/s"
+            )
+        tx_amp_code = number(tuning["tx_amp_code"])
+        amp_original = bus.transfer(
+            bus.addresses["serializer"], 0x1495, count=1
+        )[0]
         amp_manual = (amp_original & 0x40) | 0x80 | tx_amp_code
         bus.transfer(bus.addresses["serializer"], 0x1495, value=amp_manual)
+        amp_readback = bus.transfer(
+            bus.addresses["serializer"], 0x1495, count=1
+        )[0]
+        if amp_readback != amp_manual:
+            raise RuntimeError(
+                f"Link {link.upper()}: RLMS95 readback 0x{amp_readback:02x}, "
+                f"expected 0x{amp_manual:02x}"
+            )
         print(
-            f"Link {link.upper()}: MAX96717 TX amplitude "
+            f"Link {link.upper()}: profile long-channel TX amplitude "
             f"RLMS95 0x{amp_original:02x}->0x{amp_manual:02x} "
             f"(code={tx_amp_code})"
         )
@@ -280,22 +313,39 @@ def sync_link_rate(bus, link, data, desired_rate, tx_amp_code=None, long_channel
             value=(des_reg & ~0x03) | desired_rate,
         )
 
-    # ADI 6G long-channel errata: write the prescribed RLMS values before
-    # RESET_ONESHOT so the receiver calibrates using them from the start.
-    if long_channel:
-        if desired_rate != 2:
-            raise RuntimeError("Long-channel workaround requires 6 Gbit/s")
+    # Apply the profile's ADI long-channel values before RESET_ONESHOT so the
+    # receiver performs its final calibration with the intended initial gain
+    # and boost values already present.
+    if tuning is not None:
         rlms_base = 0x1400 if link == "a" else 0x1500
-        bus.transfer(bus.addresses["deserializer"], rlms_base + 0x1f, value=0x8c)
-        bus.transfer(bus.addresses["deserializer"], rlms_base + 0x23, value=0x58)
+        rlms1f = number(tuning["rlms1f"])
+        rlms23 = number(tuning["rlms23"])
+        bus.transfer(
+            bus.addresses["deserializer"], rlms_base + 0x1f, value=rlms1f
+        )
+        bus.transfer(
+            bus.addresses["deserializer"], rlms_base + 0x23, value=rlms23
+        )
+        rb1f = bus.transfer(
+            bus.addresses["deserializer"], rlms_base + 0x1f, count=1
+        )[0]
+        rb23 = bus.transfer(
+            bus.addresses["deserializer"], rlms_base + 0x23, count=1
+        )[0]
+        if rb1f != rlms1f or rb23 != rlms23:
+            raise RuntimeError(
+                f"Link {link.upper()}: long-channel readback mismatch "
+                f"RLMS1F=0x{rb1f:02x}/0x{rlms1f:02x} "
+                f"RLMS23=0x{rb23:02x}/0x{rlms23:02x}"
+            )
         print(
-            f"Link {link.upper()}: ADI long-channel "
-            "RLMS1F=0x8c RLMS23=0x58"
+            f"Link {link.upper()}: profile ADI long-channel "
+            f"RLMS1F=0x{rlms1f:02x} RLMS23=0x{rlms23:02x}"
         )
 
-    # A rate change needs re-calibration. The tuning experiment deliberately
-    # forces the same RESET_ONESHOT even if the link was already at 6G.
-    if rate_change or tx_amp_code is not None or long_channel:
+    # A rate change needs re-calibration. Profile long-channel tuning also
+    # deliberately forces one final RESET_ONESHOT after all tuning writes.
+    if rate_change or tuning is not None:
         reset_reg = 0x0010 if link == "a" else 0x0012
         reset_value = bus.transfer(
             bus.addresses["deserializer"], reset_reg, count=1
@@ -352,7 +402,7 @@ def post_reset(bus, data, links):
         bus.steps(data["links"][link]["post_reset"])
 
 
-def run_init(bus, data, links, tune_link=None, tx_amp_code=None, long_channel=False):
+def run_init(bus, data, links):
     for link in links:
         bus.steps(data["pipeline"]["init"])
 
@@ -367,11 +417,9 @@ def run_init(bus, data, links, tune_link=None, tx_amp_code=None, long_channel=Fa
         # Only then switch both ends to the profile rate.
         select_local(bus, link)
         recover_serializer_rate(bus, link, data)
-        tune_this_link = tune_link == link
         sync_link_rate(
             bus, link, data, desired_rate,
-            tx_amp_code=tx_amp_code if tune_this_link else None,
-            long_channel=long_channel and tune_this_link,
+            tuning=data["links"][link].get("long_channel_6g"),
         )
 
         bus.steps(data["pipeline"]["sensor_power"])
@@ -410,17 +458,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("validate", "install-overlays", "init-a", "init-b", "init-a-b", "pipeline-a", "pipeline-a-b", "overlays-a-b"))
     parser.add_argument("--profile", default="imx708-revb")
-    parser.add_argument("--tune-link", choices=("a", "b"), default=None,
-                        help="apply optional cold-start tuning only to this link")
-    parser.add_argument("--tx-amp-code", type=lambda value: int(value, 0), default=None,
-                        help="manual MAX96717 TX amplitude code 0..63")
-    parser.add_argument("--long-channel", action="store_true",
-                        help="apply ADI 6G long-channel RLMS1F/RLMS23 before RESET_ONESHOT")
     args = parser.parse_args()
-    if args.tx_amp_code is not None and not 0 <= args.tx_amp_code <= 0x3f:
-        parser.error("--tx-amp-code must be in range 0..63")
-    if (args.tx_amp_code is not None or args.long_channel) and args.tune_link is None:
-        parser.error("--tune-link is required with --tx-amp-code/--long-channel")
     data = profile(args.profile)
     if args.action == "validate":
         print(f"Valid profile: {data['id']} ({data['sensor']['name']})")
@@ -433,12 +471,7 @@ def main():
     bus = Bus(data)
     links = ("a", "b") if args.action.endswith("a-b") else (args.action[-1],)
     if args.action.startswith("init"):
-        run_init(
-            bus, data, links,
-            tune_link=args.tune_link,
-            tx_amp_code=args.tx_amp_code,
-            long_channel=args.long_channel,
-        )
+        run_init(bus, data, links)
     else:
         run_pipeline(bus, data, links)
 
