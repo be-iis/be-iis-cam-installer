@@ -300,9 +300,18 @@ def poll_power(stats, stop):
         stop.wait(1)
 
 
-# MAX96716A data sheet: MIPI_TX2 (0x442/0x482), CNT0/1 (0x22/0x23).
-# Link/port mapping follows tools/bringup-gmsl-links-a-b.sh.
-GMSL_REGISTERS = {"Link A": (0x0442, 0x0022), "Link B": (0x0482, 0x0023)}
+# MAX96716A data sheet:
+#   MIPI_TX2 0x442/0x482: tunnel CSI-2 CRC/ECC/sync flags
+#   CNT0/1 0x22/0x23: GMSL decoding/disparity error counters
+#   VIDEO_RX0 0x112/0x124: per-pipe video line CRC flag (Y/Z)
+#   CNT4..7 0x55c..0x55f: GMSL video-pixel packet CRC counters 0..3
+# Link/port mapping follows tools/bringup-gmsl-links-a-b.sh:
+#   Link A -> video Y, Link B -> video Z.
+GMSL_REGISTERS = {
+    "Link A": (0x0442, 0x0022, 0x0112),
+    "Link B": (0x0482, 0x0023, 0x0124),
+}
+GMSL_PACKET_CRC_REGISTERS = (0x055C, 0x055D, 0x055E, 0x055F)
 
 
 def read_des_u8(bus, address, register):
@@ -322,7 +331,11 @@ class GmslMonitor:
 
     def __init__(self, stats, bus=11, address=0x28):
         self.stats, self.bus, self.address = stats, bus, address
-        self.totals = {s.link: dict(crc=0, corr=0, uncorr=0, sync=0, dec=0) for s in stats}
+        self.totals = {
+            s.link: dict(crc=0, corr=0, uncorr=0, sync=0, dec=0, lcrc=0)
+            for s in stats
+        }
+        self.packet_crc = [0, 0, 0, 0]
         self.baselined = set()
         self.io_errors = 0
 
@@ -335,8 +348,17 @@ class GmslMonitor:
         if (self.read(0x0160) & 3 != 3 or self.read(0x0161) != 0x20
                 or self.read(0x0474) & 7 != 1 or self.read(0x04b4) & 7 != 7):
             raise RuntimeError("unsupported tunnel routing")
+        # These counters are global video-stream counters, not safely
+        # attributable to Link A/B in every routing mode. Read them only once
+        # per sample and expose all four as PCRC0..3.
+        for index, packet_crc_reg in enumerate(GMSL_PACKET_CRC_REGISTERS):
+            value = self.read(packet_crc_reg)
+            if packet_crc_reg in self.baselined:
+                self.packet_crc[index] += value
+            self.baselined.add(packet_crc_reg)
+
         for observer in self.stats:
-            status_reg, dec_reg = GMSL_REGISTERS[observer.link]
+            status_reg, dec_reg, line_crc_reg = GMSL_REGISTERS[observer.link]
             counts = self.totals[observer.link]
             status = self.read(status_reg)
             if status_reg in self.baselined:
@@ -350,10 +372,27 @@ class GmslMonitor:
             if dec_reg in self.baselined:
                 counts["dec"] += decoding
             self.baselined.add(dec_reg)
+
+            # VIDEO_RX0 bit 7 is a read-to-clear line-CRC flag. Bit 1 reports
+            # whether line CRC checking is enabled for this video pipe.
+            line_crc = self.read(line_crc_reg)
+            if line_crc_reg in self.baselined:
+                counts["lcrc"] += bool(line_crc & 0x80)
+            self.baselined.add(line_crc_reg)
+            line_crc_enabled = bool(line_crc & 0x02)
+
             with observer.lock:
-                observer.hardware = (f"Tunnel CRC hits {counts['crc']} | DEC {counts['dec']}")
+                observer.hardware = (
+                    f"DEC {counts['dec']} | GMSL PCRC "
+                    f"{self.packet_crc[0]}/{self.packet_crc[1]}/"
+                    f"{self.packet_crc[2]}/{self.packet_crc[3]}"
+                )
                 observer.hardware_detail = (
-                    f"ECC C/U {counts['corr']}/{counts['uncorr']} | Sync loss {counts['sync']}"
+                    f"Line CRC {counts['lcrc']}"
+                    f"{'' if line_crc_enabled else ' (off)'} | "
+                    f"Tunnel CRC {counts['crc']} | "
+                    f"ECC C/U {counts['corr']}/{counts['uncorr']} | "
+                    f"Sync {counts['sync']}"
                 )
 
     def poll(self, stop):
