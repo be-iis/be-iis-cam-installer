@@ -130,20 +130,9 @@ class CameraStats:
             ))
 
 
-IGNORED_CAMERA_LOG_MESSAGES = (
-    "PDAF data in unsupported format",
-)
-
-
-def ignored_camera_log(line):
-    return any(message in line for message in IGNORED_CAMERA_LOG_MESSAGES)
-
-
 def read_camera_log(process, stats):
     for raw in iter(process.stderr.readline, b""):
         line = raw.decode("utf-8", errors="replace")
-        if ignored_camera_log(line):
-            continue
         stats.log(line)
         sys.stderr.write(f"[{stats.link}] {line}")
 
