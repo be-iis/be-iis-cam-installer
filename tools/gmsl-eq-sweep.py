@@ -263,8 +263,8 @@ def write_csv(path: Path, trials: list[Trial]) -> None:
 def main() -> int:
     parser = argparse.ArgumentParser(
         description=(
-            "Disable MAX96716A AEQ on one link, sweep BSTInit around a known-good "
-            "value, and choose the middle of the zero-decode-error window."
+            "Disable MAX96716A AEQ on one link, find a zero-decode-error BSTInit "
+            "region around the requested start value, and choose its midpoint."
         )
     )
     parser.add_argument("--profile", default="imx708-revb")
@@ -372,25 +372,48 @@ def main() -> int:
         snapshot(des, regs, "manual-eq-enabled", out_dir)
 
         start_trial = trial(args.start)
-        if not start_trial.passed:
+        anchor = args.start if start_trial.passed else None
+
+        if anchor is None:
             print(
-                "\nStarting point is not error-free; no bounded good window can "
-                "be inferred. Re-run with a known-good --start value.",
+                "\nStarting point is not error-free; searching outward for the "
+                "nearest zero-decode-error setting.",
+                flush=True,
+            )
+            for distance in range(1, 0x40):
+                candidates = (args.start + distance, args.start - distance)
+                for value in candidates:
+                    if not 0 <= value <= 0x3F:
+                        continue
+                    if trial(value).passed:
+                        anchor = value
+                        print(
+                            f"Found error-free anchor at BSTInit {anchor}.",
+                            flush=True,
+                        )
+                        break
+                if anchor is not None:
+                    break
+
+        if anchor is None:
+            print(
+                "\nNo zero-decode-error BSTInit value found in the full 0..63 "
+                "range.",
                 file=sys.stderr,
             )
             return 3
 
-        low = high = args.start
+        low = high = anchor
 
         # Walk upward until the first failure, or until the field maximum.
-        for value in range(args.start + 1, 0x40):
+        for value in range(anchor + 1, 0x40):
             result = trial(value)
             if not result.passed:
                 break
             high = value
 
-        # Walk downward independently from the known-good start.
-        for value in range(args.start - 1, -1, -1):
+        # Walk downward independently from the known-good anchor.
+        for value in range(anchor - 1, -1, -1):
             result = trial(value)
             if not result.passed:
                 break
