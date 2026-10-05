@@ -89,3 +89,34 @@ reports the read-to-clear decode counter after a short dwell.
 
 The normal `imx708-revb` profile remains a 6 Gbit/s profile. These targets are
 intended for cable/link-margin experiments after normal bring-up.
+
+
+## MAX96717 TX-amplitude soak test
+
+`gmsl-tx-amp-test.py` changes only the selected MAX96717 forward-link TX
+amplitude through `RLMS95 (0x1495)`. The current GMSL2 rate and MAX96716A
+receiver EQ/adaptation are left unchanged.
+
+The tool preserves `ADCSarMethod` (bit 6), enables the manual TX-amplitude
+override (bit 7), writes the requested `TxAmplMan[5:0]` code, clears the
+selected MAX96716A read-to-clear decode counter, and watches the link for the
+requested dwell time. The first decode-error event gets an immediate snapshot.
+The exact original serializer register byte is restored afterwards unless
+`APPLY=1` is used.
+
+Example, Link A with amplitude code 45 for 60 seconds:
+
+```bash
+make tx-amp-test LINK=A TX_AMP_CODE=0x2d TX_AMP_DWELL=60
+```
+
+Useful comparison points:
+
+```bash
+make tx-amp-test LINK=A TX_AMP_CODE=0x29 TX_AMP_DWELL=60
+make tx-amp-test LINK=A TX_AMP_CODE=0x2d TX_AMP_DWELL=60
+make tx-amp-test LINK=A TX_AMP_CODE=0x31 TX_AMP_DWELL=60
+make tx-amp-test LINK=A TX_AMP_CODE=0x35 TX_AMP_DWELL=60
+```
+
+Results are stored below `captures/tx-amp-test/`.
