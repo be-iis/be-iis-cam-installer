@@ -29,10 +29,14 @@ SER_TX_AMP_REG = 0x1495
 
 LINKS = {
     "A": dict(select_mask=0x01, des_rate_reg=0x0001, decode_reg=0x0022,
-              lock_reg=0x0013, lock_mask=0x08),
+              lock_reg=0x0013, lock_mask=0x08, line_crc_reg=0x0112,
+              tunnel_status_reg=0x0442),
     "B": dict(select_mask=0x02, des_rate_reg=0x0004, decode_reg=0x0023,
-              lock_reg=0x5009, lock_mask=0x08),
+              lock_reg=0x5009, lock_mask=0x08, line_crc_reg=0x0124,
+              tunnel_status_reg=0x0482),
 }
+
+PACKET_CRC_REGISTERS = (0x055C, 0x055D, 0x055E, 0x055F)
 
 RATE_NAMES = {0x01: "3 Gbit/s", 0x02: "6 Gbit/s"}
 
@@ -214,8 +218,11 @@ def main() -> int:
     )
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    rows: list[tuple[float, int, int, int]] = []
+    rows: list[tuple[float, int, int, int, int, int, int, int, int, int]] = []
     total = 0
+    packet_crc_totals = [0, 0, 0, 0]
+    line_crc_total = 0
+    tunnel_crc_total = 0
     first_error_snapshot = ""
 
     try:
@@ -240,8 +247,12 @@ def main() -> int:
             print(f"LOST LOCK after amplitude change; snapshot={path.name}", flush=True)
             return 2
 
-        # Baseline read-to-clear counter after the amplitude change.
+        # Baseline all read-to-clear/status sources after the amplitude change.
         io.read(io.des_addr, cfg["decode_reg"])
+        for reg in PACKET_CRC_REGISTERS:
+            io.read(io.des_addr, reg)
+        io.read(io.des_addr, cfg["line_crc_reg"])
+        io.read(io.des_addr, cfg["tunnel_status_reg"])
 
         start = time.monotonic()
         deadline = start + args.dwell
@@ -249,11 +260,32 @@ def main() -> int:
             time.sleep(min(args.poll, max(0.0, deadline - time.monotonic())))
             delta = io.read(io.des_addr, cfg["decode_reg"])
             total += delta
+
+            packet_deltas = [
+                io.read(io.des_addr, reg) for reg in PACKET_CRC_REGISTERS
+            ]
+            for index, packet_delta in enumerate(packet_deltas):
+                packet_crc_totals[index] += packet_delta
+
+            line_status = io.read(io.des_addr, cfg["line_crc_reg"])
+            line_delta = int(bool(line_status & 0x80))
+            line_crc_total += line_delta
+
+            tunnel_status = io.read(io.des_addr, cfg["tunnel_status_reg"])
+            tunnel_delta = int(bool(tunnel_status & 0x20))
+            tunnel_crc_total += tunnel_delta
+
             is_locked = int(locked(io, cfg))
             elapsed = time.monotonic() - start
-            rows.append((elapsed, delta, total, is_locked))
+            rows.append((
+                elapsed, delta, total,
+                packet_crc_totals[0], packet_crc_totals[1],
+                packet_crc_totals[2], packet_crc_totals[3],
+                line_crc_total, tunnel_crc_total, is_locked,
+            ))
 
-            if delta and not first_error_snapshot:
+            any_crc_delta = any(packet_deltas) or line_delta or tunnel_delta
+            if (delta or any_crc_delta) and not first_error_snapshot:
                 path = snapshot(
                     io, cfg, args.link,
                     f"first-decode-{delta}-total-{total}",
@@ -261,12 +293,23 @@ def main() -> int:
                 )
                 first_error_snapshot = path.name
                 print(
-                    f"{elapsed:7.2f}s: DEC +{delta} total={total}; "
+                    f"{elapsed:7.2f}s: DEC +{delta} total={total} | "
+                    f"PCRC +{'/'.join(str(v) for v in packet_deltas)} "
+                    f"total={'/'.join(str(v) for v in packet_crc_totals)} | "
+                    f"LCRC +{line_delta} total={line_crc_total} | "
+                    f"TUNCRC +{tunnel_delta} total={tunnel_crc_total}; "
                     f"snapshot={path.name}",
                     flush=True,
                 )
-            elif delta:
-                print(f"{elapsed:7.2f}s: DEC +{delta} total={total}", flush=True)
+            elif delta or any_crc_delta:
+                print(
+                    f"{elapsed:7.2f}s: DEC +{delta} total={total} | "
+                    f"PCRC +{'/'.join(str(v) for v in packet_deltas)} "
+                    f"total={'/'.join(str(v) for v in packet_crc_totals)} | "
+                    f"LCRC +{line_delta} total={line_crc_total} | "
+                    f"TUNCRC +{tunnel_delta} total={tunnel_crc_total}",
+                    flush=True,
+                )
 
             if not is_locked:
                 path = snapshot(
@@ -283,17 +326,28 @@ def main() -> int:
         )
         print(
             f"RESULT: TX_CODE={args.code} RLMS95=0x{manual:02x} "
-            f"rate={rate_name} DEC={total} lock=yes dwell={args.dwell:g}s "
-            f"snapshot={final.name}",
+            f"rate={rate_name} DEC={total} "
+            f"PCRC={'/'.join(str(v) for v in packet_crc_totals)} "
+            f"LCRC={line_crc_total} TUNCRC={tunnel_crc_total} "
+            f"lock=yes dwell={args.dwell:g}s snapshot={final.name}",
             flush=True,
         )
-        return 0 if total == 0 else 4
+        return 0 if (total == 0 and not any(packet_crc_totals)
+                     and line_crc_total == 0 and tunnel_crc_total == 0) else 4
 
     finally:
         with (out_dir / "soak.csv").open("w", newline="", encoding="utf-8") as fh:
             writer = csv.writer(fh)
-            writer.writerow(("seconds", "decode_delta", "decode_total", "locked"))
-            writer.writerows((f"{s:.3f}", d, t, l) for s, d, t, l in rows)
+            writer.writerow((
+                "seconds", "decode_delta", "decode_total",
+                "packet_crc0_total", "packet_crc1_total",
+                "packet_crc2_total", "packet_crc3_total",
+                "line_crc_total", "tunnel_crc_total", "locked",
+            ))
+            writer.writerows(
+                (f"{s:.3f}", d, t, p0, p1, p2, p3, lc, tc, l)
+                for s, d, t, p0, p1, p2, p3, lc, tc, l in rows
+            )
 
         if args.apply:
             print(
