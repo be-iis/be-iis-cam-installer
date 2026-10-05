@@ -8,12 +8,14 @@ LINK ?= A
 EQ_START ?= 0x18
 EQ_DWELL ?= 5
 EQ_POLL ?= 0.10
+RATE_LINK ?= AB
+RATE_VERIFY ?= 2
 
 .PHONY: help driver i2c-mux-driver \
 	init-a init-b init-a-b \
 	pipeline-a pipeline-a-b \
 	overlays-a-b prepare-a-b unoverlay \
-	png png-0 png-1 video video-0 video-1 video-dual eq-sweep \
+	png png-0 png-1 video video-0 video-1 video-dual eq-sweep rate-3g rate-6g \
 	a a-b cameras-a-b all-a all status clean
 
 help:
@@ -38,7 +40,9 @@ help:
 		'  make video-dual      Side-by-side HDMI preview of cameras 0 and 1' \
 		'' \
 		'MAX96716A diagnostics:' \
-		'  make eq-sweep LINK=A EQ_START=0x18  Sweep manual BSTInit around a known-good value'
+		'  make eq-sweep LINK=A EQ_START=0x18  Sweep manual BSTInit around a known-good value' \
+		'  make rate-3g          Switch both GMSL2 links to 3 Gbit/s' \
+		'  make rate-6g          Switch both GMSL2 links back to 6 Gbit/s'
 
 # Build and install the patched IMX708 module. No camera configuration happens here.
 driver:
@@ -118,6 +122,17 @@ eq-sweep:
 	sudo python3 tools/gmsl-eq-sweep.py --profile "$(PROFILE)" --link "$(LINK)" \
 		--start "$(EQ_START)" --dwell "$(EQ_DWELL)" --poll "$(EQ_POLL)" \
 		$(if $(filter 1 yes true,$(APPLY)),--apply,)
+
+# Explicit GMSL2 forward-link rate switch. RATE_LINK may be A, B or AB.
+rate-3g:
+	@case "$(RATE_LINK)" in A|B|AB) ;; *) echo 'RATE_LINK must be A, B or AB' >&2; exit 2 ;; esac
+	sudo python3 tools/set-gmsl-rate.py --profile "$(PROFILE)" --rate 3 \
+		--link "$(RATE_LINK)" --verify-seconds "$(RATE_VERIFY)"
+
+rate-6g:
+	@case "$(RATE_LINK)" in A|B|AB) ;; *) echo 'RATE_LINK must be A, B or AB' >&2; exit 2 ;; esac
+	sudo python3 tools/set-gmsl-rate.py --profile "$(PROFILE)" --rate 6 \
+		--link "$(RATE_LINK)" --verify-seconds "$(RATE_VERIFY)"
 
 # Compatibility aliases for the previous short names.
 a: pipeline-a
