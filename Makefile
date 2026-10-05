@@ -13,7 +13,7 @@ EQ_POLL ?= 0.10
 	init-a init-b init-a-b \
 	pipeline-a pipeline-a-b \
 	overlays-a-b prepare-a-b unoverlay \
-	png png-0 png-1 video video-0 video-1 video-dual \
+	png png-0 png-1 video video-0 video-1 video-dual eq-sweep \
 	a a-b cameras-a-b all-a all status clean
 
 help:
@@ -35,9 +35,9 @@ help:
 		'  make video CAMERA=0  Live preview from camera 0' \
 		'  make video-0         Live preview from camera 0' \
 		'  make video-1         Live preview from camera 1' \
-		'  make video-dual      Side-by-side HDMI preview of cameras 0 and 1' \\
-		'' \\
-		'MAX96716A diagnostics:' \\
+		'  make video-dual      Side-by-side HDMI preview of cameras 0 and 1' \
+		'' \
+		'MAX96716A diagnostics:' \
 		'  make eq-sweep LINK=A EQ_START=0x18  Sweep manual BSTInit around a known-good value'
 
 # Build and install the patched IMX708 module. No camera configuration happens here.
