@@ -103,8 +103,12 @@ class GmslTests(unittest.TestCase):
     def setUp(self):
         self.stats = [preview.CameraStats('Link B'), preview.CameraStats('Link A')]
         self.monitor = preview.GmslMonitor(self.stats)
-        self.registers = {0x160: 3, 0x161: 0x20, 0x474: 9, 0x4b4: 15,
-                          0x442: 0, 0x482: 0, 0x22: 0, 0x23: 0}
+        self.registers = {
+            0x160: 3, 0x161: 0x20, 0x474: 9, 0x4b4: 15,
+            0x442: 0, 0x482: 0, 0x22: 0, 0x23: 0,
+            0x112: 0x02, 0x124: 0x02,
+            0x55c: 0, 0x55d: 0, 0x55e: 0, 0x55f: 0,
+        }
         self.monitor.read = lambda reg: self.registers[reg]
 
     def test_baseline_and_independent_totals(self):
@@ -114,12 +118,19 @@ class GmslTests(unittest.TestCase):
         self.registers[0x442] = 0x20
         self.registers[0x482] = 0x1c
         self.registers[0x22] = 3
+        self.registers[0x112] = 0x82
+        self.registers[0x55c] = 2
+        self.registers[0x55d] = 1
         self.monitor.sample()
         self.assertEqual(self.monitor.totals['Link A'],
-                         dict(crc=1, corr=0, uncorr=0, sync=0, dec=3))
+                         dict(crc=1, corr=0, uncorr=0, sync=0, dec=3, lcrc=1))
         self.assertEqual(self.monitor.totals['Link B'],
-                         dict(crc=0, corr=1, uncorr=1, sync=1, dec=0))
-        self.registers.update({0x442: 0, 0x482: 0, 0x22: 0})
+                         dict(crc=0, corr=1, uncorr=1, sync=1, dec=0, lcrc=0))
+        self.assertEqual(self.monitor.packet_crc, [2, 1, 0, 0])
+        self.registers.update({
+            0x442: 0, 0x482: 0, 0x22: 0, 0x112: 0x02,
+            0x55c: 0, 0x55d: 0,
+        })
         self.monitor.sample()
         self.assertEqual(self.monitor.totals['Link A']['crc'], 1)
 
