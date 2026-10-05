@@ -61,3 +61,31 @@ Results and JSON snapshots are written below
 coefficient. This tool therefore characterizes a reproducible manual starting
 point rather than attempting to freeze an undocumented internal adaptive
 coefficient.
+
+
+## GMSL2 3 Gbit/s / 6 Gbit/s mode switch
+
+`set-gmsl-rate.py` switches the MAX96717 transmitter and matching MAX96716A
+receiver rate explicitly. It does not rely on strap defaults.
+
+For both links:
+
+```bash
+make rate-3g
+make rate-6g
+```
+
+For one physical link only:
+
+```bash
+make rate-3g RATE_LINK=A
+make rate-3g RATE_LINK=B
+```
+
+The switch sequence selects the still-working link, changes MAX96717
+`TX_RATE[3:2]`, changes the corresponding MAX96716A receive-rate field,
+forces a one-shot link reset, waits for lock, verifies both rate fields and
+reports the read-to-clear decode counter after a short dwell.
+
+The normal `imx708-revb` profile remains a 6 Gbit/s profile. These targets are
+intended for cable/link-margin experiments after normal bring-up.
