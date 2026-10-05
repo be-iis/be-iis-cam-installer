@@ -84,12 +84,7 @@
           "verify_mask": "0x80",
           "description": "Enable MAX96716A receiver adaptation (AdaptEn) for Link A after link reset; preserve all other RLMS3 bits and verify readback."
         }
-      ],
-      "long_channel_6g": {
-        "tx_amp_code": "0x23",
-        "rlms1f": "0x8c",
-        "rlms23": "0x58"
-      }
+      ]
     },
     "b": {
       "sensor_alias": "0x53",
