@@ -4,6 +4,10 @@ SHELL := /bin/bash
 CAMERA ?= 0
 PROFILE ?= imx708-revb
 CAPTURE_DIR ?= captures
+LINK ?= A
+EQ_START ?= 0x18
+EQ_DWELL ?= 5
+EQ_POLL ?= 0.10
 
 .PHONY: help driver i2c-mux-driver \
 	init-a init-b init-a-b \
@@ -31,7 +35,10 @@ help:
 		'  make video CAMERA=0  Live preview from camera 0' \
 		'  make video-0         Live preview from camera 0' \
 		'  make video-1         Live preview from camera 1' \
-		'  make video-dual      Side-by-side HDMI preview of cameras 0 and 1'
+		'  make video-dual      Side-by-side HDMI preview of cameras 0 and 1' \\
+		'' \\
+		'MAX96716A diagnostics:' \\
+		'  make eq-sweep LINK=A EQ_START=0x18  Sweep manual BSTInit around a known-good value'
 
 # Build and install the patched IMX708 module. No camera configuration happens here.
 driver:
@@ -101,6 +108,16 @@ video-1:
 # Side-by-side HDMI preview of both cameras.
 video-dual:
 	python3 examples/dual-hdmi-preview/dual_preview.py --profile "$(PROFILE)"
+
+# Characterize manual receiver boost around a known-good setting.
+# The test disables AdaptEn and periodic AEQ on the selected link while it runs.
+# Add APPLY=1 to leave the selected midpoint active; otherwise the exact original
+# EQ register bytes are restored at the end.
+eq-sweep:
+	@case "$(LINK)" in A|B) ;; *) echo 'LINK must be A or B' >&2; exit 2 ;; esac
+	sudo python3 tools/gmsl-eq-sweep.py --profile "$(PROFILE)" --link "$(LINK)" \
+		--start "$(EQ_START)" --dwell "$(EQ_DWELL)" --poll "$(EQ_POLL)" \
+		$(if $(filter 1 yes true,$(APPLY)),--apply,)
 
 # Compatibility aliases for the previous short names.
 a: pipeline-a
