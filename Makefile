@@ -8,6 +8,8 @@ LINK ?= A
 EQ_START ?= 0x18
 EQ_DWELL ?= 5
 EQ_POLL ?= 0.10
+EQ_VALUE ?= 0x11
+EQ_TEST_DWELL ?= 60
 RATE_LINK ?= AB
 RATE_VERIFY ?= 2
 
@@ -15,7 +17,7 @@ RATE_VERIFY ?= 2
 	init-a init-b init-a-b \
 	pipeline-a pipeline-a-b \
 	overlays-a-b prepare-a-b unoverlay \
-	png png-0 png-1 video video-0 video-1 video-dual eq-sweep rate-3g rate-6g \
+	png png-0 png-1 video video-0 video-1 video-dual eq-sweep eq-test rate-3g rate-6g \
 	a a-b cameras-a-b all-a all status clean
 
 help:
@@ -41,6 +43,7 @@ help:
 		'' \
 		'MAX96716A diagnostics:' \
 		'  make eq-sweep LINK=A EQ_START=0x18  Sweep manual BSTInit around a known-good value' \
+		'  make eq-test LINK=A EQ_VALUE=0x11 EQ_DWELL=60  Fixed manual-EQ soak test' \
 		'  make rate-3g          Switch both GMSL2 links to 3 Gbit/s' \
 		'  make rate-6g          Switch both GMSL2 links back to 6 Gbit/s'
 
@@ -121,6 +124,13 @@ eq-sweep:
 	@case "$(LINK)" in A|B) ;; *) echo 'LINK must be A or B' >&2; exit 2 ;; esac
 	sudo python3 tools/gmsl-eq-sweep.py --profile "$(PROFILE)" --link "$(LINK)" \
 		--start "$(EQ_START)" --dwell "$(EQ_DWELL)" --poll "$(EQ_POLL)" \
+		$(if $(filter 1 yes true,$(APPLY)),--apply,)
+
+# Hold one manual EQ value without further resets and watch the decode counter.
+eq-test:
+	@case "$(LINK)" in A|B) ;; *) echo 'LINK must be A or B' >&2; exit 2 ;; esac
+	sudo python3 tools/gmsl-eq-test.py --profile "$(PROFILE)" --link "$(LINK)" \
+		--value "$(EQ_VALUE)" --dwell "$(EQ_DWELL)" --poll 1 \
 		$(if $(filter 1 yes true,$(APPLY)),--apply,)
 
 # Explicit GMSL2 forward-link rate switch. RATE_LINK may be A, B or AB.
