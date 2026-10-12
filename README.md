@@ -84,19 +84,52 @@ The steps are deliberately separate:
 - `make pipeline-a-b` configures both serializers and deserializer CSI outputs.
 - `make unoverlay` removes only dynamically loaded BE-IIS camera overlays.
 
-To test only the GMSL2 link, connect a serializer over coax (no camera
-required) and run:
+### GMSL2 link test without a camera
+
+You can verify the MAX96716A ↔ MAX96717 GMSL2 connection before an image
+sensor is available. Connect a BE-IIS serializer over coax to the selected
+link, power the HAT and Raspberry Pi correctly, and ensure `/dev/i2c-11` is
+available. **No image sensor, camera overlay or video pipeline is required.**
+From an up-to-date checkout on the Pi:
 
 ~~~bash
-make init-a SENSOR=no
-# or: make init-b SENSOR=no
+make init-a SENSOR=no       # only Link A
+make init-b SENSOR=no       # only Link B
+make init-a-b SENSOR=no     # both connected serializers
 ~~~
 
-On a successful test, the command prints `Link A: LOCKED (sensor check skipped)`
-(or Link B) and returns exit status 0. The link is verified independently of
-the camera; this does not test image capture. The same option is available to
-the Python CLI as `--sensor no`. Use the standard `SENSOR=yes` mode when a
-camera is attached.
+Use the command matching your connected hardware. The default remains
+`SENSOR=yes` and performs the profile-specific sensor setup and ID checks.
+With `SENSOR=no`, the runner **skips sensor power/reset configuration, sensor
+aliases, sensor ID and autofocus checks**, but still configures the selected
+GMSL2 link(s), detects the serializer, synchronises link rate, enables
+receiver adaptation and checks the MAX96716A LOCK status.
+
+Example output from a **Rev. B hardware test without image sensors**:
+
+~~~text
+Link A: recovered serializer at 6 Gbit/s
+Link A: GMSL2 rate already 6 Gbit/s
+0x1403: Enable MAX96716A receiver adaptation ... (0x8a)
+Link A: LOCKED (sensor check skipped)
+~~~
+
+`LOCKED` and exit status 0 confirm the GMSL2 transport link, **not** image
+sensor detection or video capture. A missing LOCK returns an error. During
+rate recovery an intermediate `no lock with DES RX rate 3 Gbit/s` may appear
+before a successful 6 Gbit/s lock. The last LOCK result is decisive.
+
+The same mode is available via `sudo python3 tools/camera_profile.py init-a
+--profile imx708-revb --sensor no`. It is supported only for `init-a`,
+`init-b` and `init-a-b`, not the video pipeline commands. The camera-free
+test has been verified on **Rev. B** with `imx708-revb`; **Rev. A is not
+validated** by that test. Do not assume the Rev. B hardware profile applies
+unchanged to Rev. A. The `imx708-revb` profile in this mode configures the
+DES/SER link only: it is not a working profile for a different sensor.
+
+For detailed instructions and new image-sensor integration, see
+[Dual-camera manual bring-up](docs/dual-camera-bringup.md) and the
+[BE-IIS bring-up guide](https://be-iis.eu/wiki/gmsl2-2cam/bring-up/#new-imager).
 
 The previous short targets `make a`, `make a-b` and `make cameras-a-b` remain
 as compatibility aliases but should not be used in new instructions.
