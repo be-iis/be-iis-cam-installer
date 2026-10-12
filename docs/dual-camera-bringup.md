@@ -13,6 +13,72 @@ Raspberry Pi 5. It deliberately does not use systemd.
 The Device Tree overlays intentionally use separate Pi CSI receivers. Do not
 move Link B from csi0 to csi1.
 
+## Test a GMSL2 link before the camera is connected
+
+Use the new `SENSOR=no` mode when you have a MAX96717 serializer connected
+over coax, but **no image sensor** is installed yet. It verifies the
+deserializer/serializer transport independently from sensor communication and
+CSI-2 video.
+
+1. Switch off the hardware; connect the serializer to the selected Link A or
+   Link B using coax. Provide the correct power supplies for the Pi, HAT and
+   serializer.
+2. Start the Raspberry Pi 5 and ensure the HAT control interface is available
+   at `/dev/i2c-11`. The installer must already be installed, or follow the
+   [installation instructions](../README.md).
+3. Run the command for your actual configuration from the repository:
+
+~~~bash
+make init-a SENSOR=no PROFILE=imx708-revb
+# or:
+make init-b SENSOR=no PROFILE=imx708-revb
+# or, with two serializers:
+make init-a-b SENSOR=no PROFILE=imx708-revb
+~~~
+
+Only use `make init-a-b` if **both** serializers are connected. These
+commands do not load camera overlays or configure a CSI video pipeline.
+In this mode the runner skips sensor-specific power/reset operations, I2C
+aliases and sensor/focus identity checks. It still performs link configuration,
+automatic rate recovery, MAX96717 detection, receiver adaptation and a final
+MAX96716A LOCK check.
+
+Example from an actual **Rev. B** test with no sensor:
+
+~~~text
+Link B: no lock with DES RX rate 3 Gbit/s
+Link B: recovered serializer at 6 Gbit/s
+Link B: GMSL2 rate already 6 Gbit/s
+0x1503: Enable MAX96716A receiver adaptation ... (0x8a)
+Link B: LOCKED (sensor check skipped)
+~~~
+
+The initial 3 Gbit/s message is not a failure if the link subsequently locks
+at 6 Gbit/s. `LOCKED` and an exit status of 0 prove only the GMSL2 transport
+connection; they do **not** prove sensor access, correct CSI routing or video
+capture. If the final LOCK check fails, the command returns an error.
+
+For independent register diagnostics, the MAX96716A is at I2C address
+`0x28` on Raspberry Pi bus 11. The runner uses register `0x0013` for
+Link A and `0x5009` for Link B; **bit 3 (`0x08`)** indicates LOCK:
+
+~~~bash
+sudo i2ctransfer -f -y 11 w2@0x28 0x00 0x13 r1  # Link A
+sudo i2ctransfer -f -y 11 w2@0x28 0x50 0x09 r1  # Link B
+~~~
+
+Use these reads on the documented setup and only when the corresponding
+device is not claimed by another driver. The successful Rev. B test produced
+`0xda` for Link A, where bit 3 is set.
+
+**Compatibility limit:** This camera-free test has been performed on the
+**Rev. B** HAT with profile `imx708-revb`. Rev. A differs and has not been
+validated with this profile. When connecting a new imager, provide its own
+sensor-specific profile and switch back to the default `SENSOR=yes` mode;
+`SENSOR=no` does not initialize any sensor. The detailed
+[BE-IIS imager integration guide](https://be-iis.eu/wiki/gmsl2-2cam/bring-up/#new-imager)
+describes the subsequent sensor, Device Tree and MIPI-CSI-2 work.
+
 ## Start from a clean dynamic-overlay state
 
 ~~~bash
