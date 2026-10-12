@@ -32,6 +32,37 @@ Both sensors use RAW10, 2 lanes, 2304x1296 and CSI stream 0.
 Do not use 0x0161 = 0x32 for these IMX708 streams: it selects stream 2 and
 causes a Pi frontend timeout without frame packets.
 
+## Camera-free transport diagnostic (verified on Rev. B)
+
+The camera-profile runner supports `--sensor no` for `init-a`, `init-b`
+and `init-a-b`, exposed by Make as `SENSOR=no`:
+
+~~~bash
+make init-a SENSOR=no PROFILE=imx708-revb
+make init-b SENSOR=no PROFILE=imx708-revb
+make init-a-b SENSOR=no PROFILE=imx708-revb
+~~~
+
+Run only the command matching the attached serializers. It performs
+MAX96716A/MAX96717 link setup, rate recovery, AdaptEn and LOCK readback,
+but omits sensor power/reset, aliases and sensor/focus ID reads.
+It does not load overlays or configure video. Default `SENSOR=yes`
+preserves normal sensor initialization.
+
+Verified physical Rev. B test **without image sensors**:
+
+- Link A and B both reported `LOCKED (sensor check skipped)` at 6 Gbit/s.
+- Receiver adaptation read back `0x1403=0x8a` (A) and `0x1503=0x8a` (B).
+- Link B initially reported no lock at 3 Gbit/s, then recovered at 6 Gbit/s.
+- A separate Link A status read returned `0x0013=0xda` (LOCK bit 3 set).
+- Link A LOCK status register: `0x0013`; Link B: `0x5009`.
+  Evaluate `status & 0x08` to determine lock. Both registers are on
+  MAX96716A at I2C address `0x28`, Raspberry Pi bus 11.
+
+A successful camera-free link test does **not** establish that the sensor,
+Linux media graph or CSI stream works. This verification is limited to **Rev. B
+with `imx708-revb`** and does not validate Rev. A with that profile.
+
 ## Expected runtime evidence
 
 ~~~text
