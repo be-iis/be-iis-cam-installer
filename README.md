@@ -75,10 +75,28 @@ The steps are deliberately separate:
 - `make init-a` initialises only the Link-A control path.
 - `make init-b` initialises only the Link-B control path.
 - `make init-a-b` initialises both reverse-I2C links and aliases.
+- `SENSOR=yes` (default) also powers and checks the profile's camera sensor.
+- `SENSOR=no` skips sensor-specific power, aliases and ID checks. It still
+  initialises the selected GMSL2 link(s), applies receiver adaptation, and
+  checks the MAX96716A LOCK bit. A missing LOCK causes a nonzero exit status.
 - `make prepare-a-b` runs the selected profile's dual control-plane setup and loads its camera overlays.
 - `make pipeline-a` configures the Link-A GMSL/CSI video pipeline.
 - `make pipeline-a-b` configures both serializers and deserializer CSI outputs.
 - `make unoverlay` removes only dynamically loaded BE-IIS camera overlays.
+
+To test only the GMSL2 link, connect a serializer over coax (no camera
+required) and run:
+
+~~~bash
+make init-a SENSOR=no
+# or: make init-b SENSOR=no
+~~~
+
+On a successful test, the command prints `Link A: LOCKED (sensor check skipped)`
+(or Link B) and returns exit status 0. The link is verified independently of
+the camera; this does not test image capture. The same option is available to
+the Python CLI as `--sensor no`. Use the standard `SENSOR=yes` mode when a
+camera is attached.
 
 The previous short targets `make a`, `make a-b` and `make cameras-a-b` remain
 as compatibility aliases but should not be used in new instructions.
