@@ -3,6 +3,7 @@ SHELL := /bin/bash
 
 CAMERA ?= 0
 PROFILE ?= imx708-revb
+SENSOR ?= yes
 CAPTURE_DIR ?= captures
 
 .PHONY: help driver i2c-mux-driver \
@@ -18,6 +19,8 @@ help:
 		'  make init-a          Initialise GMSL Link A control path' \
 		'  make init-b          Initialise GMSL Link B control path' \
 		'  make init-a-b        Initialise both GMSL control paths' \
+		'  make init-a SENSOR=no   Initialise Link A without camera, verify LOCK' \
+		'  make init-b SENSOR=no   Initialise Link B without camera, verify LOCK' \
 		'  make pipeline-a      Configure Link A video pipeline' \
 		'  make pipeline-a-b    Configure both video pipelines' \
 		'  make prepare-a-b     Initialise both links and load selected camera overlays' \
@@ -43,15 +46,15 @@ i2c-mux-driver:
 
 # Pure I2C control-plane bring-up for physical Link A, alias 0x52.
 init-a:
-	sudo python3 tools/camera_profile.py init-a --profile "$(PROFILE)"
+	sudo python3 tools/camera_profile.py init-a --profile "$(PROFILE)" --sensor "$(SENSOR)"
 
 # Pure I2C control-plane bring-up for physical Link B, alias 0x53.
 init-b:
-	sudo python3 tools/camera_profile.py init-b --profile "$(PROFILE)"
+	sudo python3 tools/camera_profile.py init-b --profile "$(PROFILE)" --sensor "$(SENSOR)"
 
 # Dual-link I2C control plane: sensor and focus aliases, no video pipeline.
 init-a-b:
-	sudo python3 tools/camera_profile.py init-a-b --profile "$(PROFILE)"
+	sudo python3 tools/camera_profile.py init-a-b --profile "$(PROFILE)" --sensor "$(SENSOR)"
 
 # Configure video for Link A only. This intentionally enables Pipe Y only.
 pipeline-a:
