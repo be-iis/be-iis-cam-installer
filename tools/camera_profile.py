@@ -316,7 +316,7 @@ def post_reset(bus, data, links):
         bus.steps(data["links"][link]["post_reset"])
 
 
-def run_init(bus, data, links):
+def run_init(bus, data, links, sensor=True):
     for link in links:
         bus.steps(data["pipeline"]["init"])
 
@@ -331,11 +331,18 @@ def run_init(bus, data, links):
         recover_serializer_rate(bus, link, data)
         sync_link_rate(bus, link, data, desired_rate)
 
-        bus.steps(data["pipeline"]["sensor_power"])
-        aliases(bus, link, data)
+        if sensor:
+            bus.steps(data["pipeline"]["sensor_power"])
+            aliases(bus, link, data)
     if len(links) == 2:
         select(bus, "ab", data)
     post_reset(bus, data, links)
+
+    if not sensor:
+        for link in links:
+            if not wait_link_lock(bus, link):
+                raise RuntimeError(f"Link {link.upper()}: NO LOCK (sensor check skipped)")
+            print(f"Link {link.upper()}: LOCKED (sensor check skipped)")
 
 
 def run_pipeline(bus, data, links):
@@ -367,7 +374,11 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("action", choices=("validate", "install-overlays", "init-a", "init-b", "init-a-b", "pipeline-a", "pipeline-a-b", "overlays-a-b"))
     parser.add_argument("--profile", default="imx708-revb")
+    parser.add_argument("--sensor", choices=("yes", "no"), default="yes",
+                        help="Configure and verify the image sensor during init (default: yes)")
     args = parser.parse_args()
+    if args.sensor == "no" and not args.action.startswith("init"):
+        parser.error("--sensor no is only supported for init-a, init-b and init-a-b")
     data = profile(args.profile)
     if args.action == "validate":
         print(f"Valid profile: {data['id']} ({data['sensor']['name']})")
@@ -380,7 +391,7 @@ def main():
     bus = Bus(data)
     links = ("a", "b") if args.action.endswith("a-b") else (args.action[-1],)
     if args.action.startswith("init"):
-        run_init(bus, data, links)
+        run_init(bus, data, links, sensor=args.sensor == "yes")
     else:
         run_pipeline(bus, data, links)
 
