@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 // Link-A IMX708 and DW9817 behind MAX96717 aliases 0x52 and 0x5c.
+// Raspberry Pi 4 Model B: the two-lane camera connector uses CSI1/Unicam.
 /dts-v1/;
 /plugin/;
 
@@ -71,6 +72,4 @@
 			};
 		};
 	};
-
-	fragment@102 { target = <&csi1>; __dormant__ { compatible = "brcm,bcm2835-unicam-legacy"; }; };
 };

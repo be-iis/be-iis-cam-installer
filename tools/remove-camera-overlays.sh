@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
-#
-# Remove only dynamically loaded BE-IIS GMSL IMX708 overlays.
-#
-# This does not touch config.txt and does not remove Raspberry Pi standard
-# camera overlays. Stop all rpicam/libcamera programs before running it.
-#
+# Remove the dynamically loaded BE-IIS Link A overlay.
+# Stop all rpicam/libcamera programs before running this script.
 set -Eeuo pipefail
 
 (( EUID == 0 )) || { echo 'Run with sudo.' >&2; exit 1; }
-command -v dtoverlay >/dev/null || { echo 'dtoverlay not found.' >&2; exit 1; }
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+i2c_device="$(python3 "$script_dir/camera_profile.py" i2c-device --profile "${1:-imx708-revb}")"
+loaded="$(dtoverlay -l)"
+overlay_id="$(awk '$2 == "imx708-gmsl-link-a" { sub(/:$/, "", $1); print $1 }' <<<"$loaded")"
 
-# The kernel cannot safely remove an overlay while its I2C client is bound.
-for device in 11-0053 11-0052; do
+if [[ -z "$overlay_id" ]]; then
+	echo 'No BE-IIS GMSL camera overlay is loaded.'
+	exit 0
+fi
+
+bus="${i2c_device##*-}"
+for alias in 0052 005c; do
+	device="${bus}-${alias}"
 	driver="/sys/bus/i2c/devices/${device}/driver"
 	if [[ -L "$driver" ]]; then
 		echo "$device" > "$driver/unbind"
@@ -19,18 +24,5 @@ for device in 11-0053 11-0052; do
 	fi
 done
 
-mapfile -t overlays < <(
-	dtoverlay -l |
-		awk '/imx708-gmsl-link-(a|b)/ { id=$1; sub(/:/, "", id); print id }'
-)
-
-# Overlays have to be removed in reverse load order.
-for ((index=${#overlays[@]} - 1; index >= 0; index--)); do
-	id="${overlays[index]}"
-	dtoverlay -r "$id"
-	echo "Removed overlay ${id}"
-done
-
-if (( ${#overlays[@]} == 0 )); then
-	echo 'No BE-IIS GMSL camera overlay is loaded.'
-fi
+dtoverlay -r "$overlay_id"
+echo "Removed overlay ${overlay_id}"

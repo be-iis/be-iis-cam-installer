@@ -7,7 +7,7 @@ if (( $# > 1 )); then
 	printf 'Usage: %s [profile]\n' "$0" >&2
 	exit 2
 fi
-python3 "$repo_dir/tools/camera_profile.py" validate --profile "$profile"
+i2c_device="$(python3 "$repo_dir/tools/camera_profile.py" i2c-device --profile "$profile")"
 
 printf '==> BE-IIS camera installer\n'
 
@@ -28,19 +28,23 @@ fi
 
 sudo modprobe i2c-dev || true
 
-if [[ ! -e /dev/i2c-11 ]]; then
-	printf '\nERROR: boot configuration is correct, but /dev/i2c-11 is still unavailable.\n' >&2
+if [[ ! -c "$i2c_device" ]]; then
+	printf '\nERROR: boot configuration is correct, but %s is still unavailable.\n' "$i2c_device" >&2
 	printf 'Check the Raspberry Pi model, kernel and Device Tree configuration.\n' >&2
 	exit 1
 fi
 
-printf 'Camera I2C bus found: /dev/i2c-11\n'
+printf 'Camera I2C bus found: %s\n' "$i2c_device"
 
 printf '\n==> Install required packages\n'
 sudo apt-get update
+if [[ ! -f "/lib/modules/$(uname -r)/build/Makefile" ]]; then
+	sudo apt-get install -y "linux-headers-$(uname -r)"
+fi
 sudo apt-get install -y \
 	build-essential \
-	raspberrypi-kernel-headers \
+	curl \
+	patch \
 	i2c-tools \
 	v4l-utils \
 	device-tree-compiler \
@@ -69,9 +73,6 @@ fi
 printf '\n==> Install camera overlays for %s (without loading them)\n' "$profile"
 sudo python3 "$repo_dir/tools/camera_profile.py" install-overlays --profile "$profile"
 
-printf '\n==> Build and install MAX96716A I2C mux driver\n'
-make -C "$repo_dir" i2c-mux-driver
-
 printf '\nInstallation complete.\n'
 printf 'No GMSL link or video pipeline was initialised.\n'
-printf 'Use make init-a, make init-b or make init-a-b when you are ready.\n'
+printf 'Use make prepare-a when you are ready.\n'

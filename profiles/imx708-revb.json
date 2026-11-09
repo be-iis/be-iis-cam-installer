@@ -1,9 +1,9 @@
 {
   "schema": 1,
   "id": "imx708-revb",
-  "status": "verified",
-  "description": "BE-IIS 2CAM RevB: two IMX708 sensors via MAX96717/MAX96716A in GMSL2 tunnel mode; tested on Raspberry Pi 5 with the patched IMX708 driver.",
-  "i2c_bus": 11,
+  "status": "experimental",
+  "description": "BE-IIS 2CAM RevB: one IMX708 on Link A via MAX96717/MAX96716A in GMSL2 tunnel mode. Raspberry Pi 4 Model B, two CSI-2 lanes.",
+  "i2c_bus": 10,
   "devices": {
     "deserializer": "0x28",
     "serializer": "0x40"
@@ -14,14 +14,11 @@
   ],
   "capture": {
     "camera_indices": [
-      0,
-      1
+      0
     ],
     "links": [
-      "b",
       "a"
-    ],
-    "stereo_uncalibrated_horizontal_fov_deg": 66
+    ]
   },
   "sensor": {
     "name": "IMX708",
@@ -36,11 +33,10 @@
   },
   "install": {
     "driver_target": "driver",
-    "overlay_target": "overlays-a-b"
+    "overlay_target": "overlays-a"
   },
   "overlays": {
-    "a": "imx708-gmsl-link-a",
-    "b": "imx708-gmsl-link-b"
+    "a": "imx708-gmsl-link-a"
   },
   "links": {
     "a": {
@@ -658,5 +654,6 @@
     "deserializer_b": "Configure pipe Z and the CSI output to Pi CSI0 for Link B.",
     "route_a": "Select Link A stream 0, enable its pipe and release CSI output.",
     "route_ab": "Route both stream-0 inputs, enable both pipes and release CSI output."
-  }
+  },
+  "platform_compatible": "raspberrypi,4-model-b"
 }

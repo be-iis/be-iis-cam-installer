@@ -1,192 +1,42 @@
-# BE-IIS Camera Installer
+# BE-IIS GMSL2 camera installer for Raspberry Pi 4
 
-Linux integration for the BE-IIS Raspberry Pi GMSL2 camera platform.
+This experimental branch targets Raspberry Pi 4 Model B, the BE-IIS GMSL2 2CAM
+Rev. B HAT and one IMX708 camera connected through a MAX96717 serializer.
+The Pi 4 has one 15-pin camera connector with two CSI-2 data lanes. Use an
+appropriate 15-to-22-pin camera ribbon cable between the Pi's CAMERA connector
+and the HAT's CSI output for Link A. Connect the serializer to the HAT's GMSL
+Link A coax input and power the hardware as specified for the HAT and serializer.
 
-The repository intentionally keeps installation, GMSL control-plane setup,
-video-pipeline setup and user capture commands separate. No systemd service
-initialises the cameras automatically.
+Link A uses the Pi's CSI1 (Unicam), the camera I²C bus at `/dev/i2c-10`, and
+camera index 0. The IMX708 and autofocus aliases are `0x52` and `0x5c`.
+This setup uses the existing two-lane tunnel configuration and the Raspberry Pi
+OS libcamera pipeline. The [main branch](https://github.com/be-iis/be-iis-cam-installer)
+contains the Pi 5 dual-camera setup.
 
-## Installation
+## Install and bring up Link A
 
-On a fresh Raspberry Pi run (the default profile is `imx708-revb`):
+On Raspberry Pi OS with a supported Raspberry Pi kernel and matching headers:
 
-~~~bash
+```bash
+git clone --branch pi4-2lane https://github.com/be-iis/be-iis-cam-installer.git
+cd be-iis-cam-installer
 ./install.sh
-# Equivalent: ./install.sh imx708-revb
-~~~
+```
 
-The installer:
+If the installer changes the boot configuration, it reboots the Pi. Run
+`./install.sh` again after reboot. Then run:
 
-1. checks for the Raspberry Pi camera I2C bus (`/dev/i2c-11`),
-2. enables `dtparam=i2c_csi_dsi=on` when required and reboots,
-3. installs the build, I2C, V4L2, rpicam, Python and GStreamer dependencies,
-4. builds and installs the driver specified by the camera profile,
-5. builds and installs the MAX96716A I2C mux driver,
-6. compiles and installs that profile's camera overlays without activating them.
-
-After an automatic reboot, run `./install.sh` again. Installation does **not**
-initialise a GMSL link or video pipeline.
-
-## Camera profiles
-
-`profiles/imx708-revb.json` records the hardware combination, I2C aliases,
-sensor ID checks, power sequence and ordered serializer/deserializer pipeline
-register writes. `tools/camera_profile.py` accepts only known operations
-(`write`, masked `update`, bounded `sleep`); JSON cannot execute shell code.
-Rev. B has no DigiPot: the profile explicitly sets 6 Gbit/s, coax and tunnel
-mode on both MAX96716A links through I2C before configuring the video pipes.
-Each register step has a `description` explaining its purpose. For settings
-whose individual register bits have not yet been confirmed, the description
-explicitly says so. After each link reset, the profile enables and verifies
-MAX96716A receiver adaptation (RLMS3 `AdaptEn`, `0x1403` on A and `0x1503`
-on B). This enables adaptation; it does not set a fixed equalizer coefficient.
-Profile selection is explicit: `./install.sh PROFILE` followed by
-`make prepare-a-b PROFILE=PROFILE` and `make pipeline-a-b PROFILE=PROFILE`.
-The migrated IMX708 profile needs a Raspberry Pi hardware retest before
-production use.
-
-To add a camera, provide a reviewed JSON profile, a sensor driver Make target
-(or `none` for an existing kernel driver), and two overlay DTS files. Mark a
-new profile `verified` only after checking sensor IDs and image capture on the
-actual hardware. Sensor driver patches remain profile specific. The older
-IMX708 shell scripts remain in `tools/` for comparison and manual recovery.
-
-## Current verified dual-camera configuration
-
-| Link | Aliases | MAX96716A output | Raspberry Pi input | rpicam camera |
-| --- | --- | --- | --- | --- |
-| A | IMX708 0x52, DW9807 0x5c | Port A / DPHY0-1 | CSI1 (1f00128000.csi) | 1 |
-| B | IMX708 0x53, DW9807 0x5d | Port B / DPHY2-3 | CSI0 / J3 (1f00110000.csi) | 0 |
-
-Validated mode: 2304x1296, RAW10, two CSI-2 lanes, 900 Mbit/s per lane.
-
-## Manual dual-camera workflow
-
-~~~bash
-cd ~/be-iis-cam-installer
-make unoverlay
-make prepare-a-b
-make pipeline-a-b
+```bash
+make prepare-a
 rpicam-hello --list-cameras
-~~~
+rpicam-hello --camera 0 --nopreview --timeout 5000 --width 2304 --height 1296
+```
 
-The steps are deliberately separate:
+`make prepare-a` initializes the control path and aliases, configures the
+serializer and deserializer video pipeline, and loads the Link A overlay.
+Stop any camera applications and run `make unoverlay` before repeating
+`make prepare-a`. Use `make video` for live preview or `make png` for a still.
 
-- `make init-a` initialises only the Link-A control path.
-- `make init-b` initialises only the Link-B control path.
-- `make init-a-b` initialises both reverse-I2C links and aliases.
-- `SENSOR=yes` (default) also powers and checks the profile's camera sensor.
-- `SENSOR=no` skips sensor-specific power, aliases and ID checks. It still
-  initialises the selected GMSL2 link(s), applies receiver adaptation, and
-  checks the MAX96716A LOCK bit. A missing LOCK causes a nonzero exit status.
-- `make prepare-a-b` runs the selected profile's dual control-plane setup and loads its camera overlays.
-- `make pipeline-a` configures the Link-A GMSL/CSI video pipeline.
-- `make pipeline-a-b` configures both serializers and deserializer CSI outputs.
-- `make unoverlay` removes only dynamically loaded BE-IIS camera overlays.
-
-### GMSL2 link test without a camera
-
-You can verify the MAX96716A ↔ MAX96717 GMSL2 connection before an image
-sensor is available. Connect a BE-IIS serializer over coax to the selected
-link, power the HAT and Raspberry Pi correctly, and ensure `/dev/i2c-11` is
-available. **No image sensor, camera overlay or video pipeline is required.**
-From an up-to-date checkout on the Pi:
-
-~~~bash
-make init-a SENSOR=no       # only Link A
-make init-b SENSOR=no       # only Link B
-make init-a-b SENSOR=no     # both connected serializers
-~~~
-
-Use the command matching your connected hardware. The default remains
-`SENSOR=yes` and performs the profile-specific sensor setup and ID checks.
-With `SENSOR=no`, the runner **skips sensor power/reset configuration, sensor
-aliases, sensor ID and autofocus checks**, but still configures the selected
-GMSL2 link(s), detects the serializer, synchronises link rate, enables
-receiver adaptation and checks the MAX96716A LOCK status.
-
-Example output from a **Rev. B hardware test without image sensors**:
-
-~~~text
-Link A: recovered serializer at 6 Gbit/s
-Link A: GMSL2 rate already 6 Gbit/s
-0x1403: Enable MAX96716A receiver adaptation ... (0x8a)
-Link A: LOCKED (sensor check skipped)
-~~~
-
-`LOCKED` and exit status 0 confirm the GMSL2 transport link, **not** image
-sensor detection or video capture. A missing LOCK returns an error. During
-rate recovery an intermediate `no lock with DES RX rate 3 Gbit/s` may appear
-before a successful 6 Gbit/s lock. The last LOCK result is decisive.
-
-The same mode is available via `sudo python3 tools/camera_profile.py init-a
---profile imx708-revb --sensor no`. It is supported only for `init-a`,
-`init-b` and `init-a-b`, not the video pipeline commands. The camera-free
-test has been verified on **Rev. B** with `imx708-revb`; **Rev. A is not
-validated** by that test. Do not assume the Rev. B hardware profile applies
-unchanged to Rev. A. The `imx708-revb` profile in this mode configures the
-DES/SER link only: it is not a working profile for a different sensor.
-
-For detailed instructions and new image-sensor integration, see
-[Dual-camera manual bring-up](docs/dual-camera-bringup.md) and the
-[BE-IIS bring-up guide](https://be-iis.eu/wiki/gmsl2-2cam/bring-up/#new-imager).
-
-The previous short targets `make a`, `make a-b` and `make cameras-a-b` remain
-as compatibility aliases but should not be used in new instructions.
-
-## Capture and preview
-
-Save a PNG:
-
-~~~bash
-make png-0
-make png-1
-~~~
-
-The files are written to `captures/` with a timestamp. The generic form is
-`make png CAMERA=0` or `make png CAMERA=1`.
-
-Show one camera continuously on the local display:
-
-~~~bash
-make video-0
-make video-1
-~~~
-
-The generic form is `make video CAMERA=0` or `make video CAMERA=1`. Stop with
-Ctrl-C.
-
-Show both cameras side by side on HDMI:
-
-~~~bash
-make video-dual
-~~~
-
-On the validated dual setup, rpicam camera 0 is Link B (`imx708@53`) and camera
-1 is Link A (`imx708@52`).
-
-For the detailed manual procedure, see
-[Dual-camera manual bring-up](docs/dual-camera-bringup.md). For the compact
-technical baseline used by future debugging work, see
-[AI dual-camera reference](docs/ai-dual-camera-reference.md).
-
-## Driver build
-
-The individual driver targets remain available:
-
-~~~bash
-make driver
-make i2c-mux-driver
-~~~
-
-## Repository layout
-
-~~~text
-drivers/imx708/                  reproducible external IMX708 module build
-drivers/max96716a-i2c-mux/       MAX96716A control-plane I2C mux
-overlays/                         dual IMX708 Device Tree sources
-tools/init-gmsl-*.sh             manual reverse-I2C setup
-tools/bringup-gmsl-*.sh          manual CSI/video-pipeline setup
-examples/                         capture/preview examples
-docs/                             procedure and diagnostic references
-~~~
+For a transport-only check with a powered serializer and no image sensor,
+run `make init-a SENSOR=no`. This checks GMSL2 lock. Video capture on the
+Pi 4 still requires validation on hardware.

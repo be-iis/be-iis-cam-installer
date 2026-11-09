@@ -25,8 +25,8 @@ def profile(name):
         raise ValueError("Invalid profile name")
     path = PROFILES / (name + ".json")
     data = json.loads(path.read_text())
-    if data["id"] != name or data["status"] != "verified":
-        raise ValueError("Only verified profiles with matching IDs can be selected")
+    if data["id"] != name or data["status"] not in ("verified", "experimental"):
+        raise ValueError("Expected a verified or experimental profile with a matching ID")
     if data["schema"] != 1 or set(data["links"]) != {"a", "b"}:
         raise ValueError("Unsupported profile schema or link layout")
     for name in data["overlays"].values():
@@ -356,14 +356,15 @@ def run_pipeline(bus, data, links):
     post_reset(bus, data, links)
 
 
+def require_overlay_unloaded(data):
+    loaded = command("dtoverlay", "-l", capture=True).stdout
+    if any(name in loaded for name in data["overlays"].values()):
+        raise RuntimeError("Camera overlay is already loaded; run make unoverlay")
+
+
 def install_overlays(data, load=False):
-    if load and command("dtoverlay", "-l", capture=True).stdout.strip():
-        names = tuple(data["overlays"].values())
-        if any(name in command("dtoverlay", "-l", capture=True).stdout for name in names):
-            raise RuntimeError("Camera overlays are already loaded; run make unoverlay")
     directory = Path("/boot/firmware/overlays")
-    for link in ("a", "b"):
-        name = data["overlays"][link]
+    for name in data["overlays"].values():
         command("dtc", "-@", "-H", "epapr", "-I", "dts", "-O", "dtb", "-o",
                 str(directory / (name + ".dtbo")), str(ROOT / "overlays" / (name + ".dts")))
         if load:
@@ -372,28 +373,39 @@ def install_overlays(data, load=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("action", choices=("validate", "install-overlays", "init-a", "init-b", "init-a-b", "pipeline-a", "pipeline-a-b", "overlays-a-b"))
+    parser.add_argument("action", choices=("validate", "i2c-device", "install-overlays",
+                                           "init-a", "pipeline-a", "overlays-a", "prepare-a"))
     parser.add_argument("--profile", default="imx708-revb")
     parser.add_argument("--sensor", choices=("yes", "no"), default="yes",
                         help="Configure and verify the image sensor during init (default: yes)")
     args = parser.parse_args()
     if args.sensor == "no" and not args.action.startswith("init"):
-        parser.error("--sensor no is only supported for init-a, init-b and init-a-b")
+        parser.error("--sensor no is only supported for init-a")
     data = profile(args.profile)
     if args.action == "validate":
-        print(f"Valid profile: {data['id']} ({data['sensor']['name']})")
+        print(f"Valid profile: {data['id']} ({data['sensor']['name']}, {data['status']})")
+        return
+    compatible = Path("/proc/device-tree/compatible")
+    if not compatible.is_file() or data["platform_compatible"] not in compatible.read_text().split("\0"):
+        parser.error("This profile requires a Raspberry Pi 4 Model B")
+    if args.action == "i2c-device":
+        print(f"/dev/i2c-{data['i2c_bus']}")
         return
     if os.geteuid() != 0:
         parser.error("Hardware operations require sudo")
-    if args.action in ("overlays-a-b", "install-overlays"):
-        install_overlays(data, load=args.action == "overlays-a-b")
+    if args.action in ("overlays-a", "prepare-a"):
+        require_overlay_unloaded(data)
+    if args.action in ("overlays-a", "install-overlays"):
+        install_overlays(data, load=args.action == "overlays-a")
         return
     bus = Bus(data)
-    links = ("a", "b") if args.action.endswith("a-b") else (args.action[-1],)
-    if args.action.startswith("init"):
+    links = ("a",)
+    if args.action in ("init-a", "prepare-a"):
         run_init(bus, data, links, sensor=args.sensor == "yes")
-    else:
+    if args.action in ("pipeline-a", "prepare-a"):
         run_pipeline(bus, data, links)
+    if args.action == "prepare-a":
+        install_overlays(data, load=True)
 
 
 if __name__ == "__main__":
